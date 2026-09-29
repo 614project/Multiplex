@@ -73,26 +73,26 @@ class AppPreferences {
   }
 
   Map<String, Object?> toJson() => {
-        'themeMode': themeMode.name,
-        'seedColor': seedColor,
-        'useDynamicColor': useDynamicColor,
-        'cellLayout': cellLayout.name,
-        'mobileCellColumns': mobileCellColumns,
-        'globalApiBaseUrl': globalApiBaseUrl,
-        'defaultTimeoutSeconds': defaultTimeoutSeconds,
-        'defaultGenerationMode': defaultGenerationMode,
-        'defaultClipSkip': defaultClipSkip,
-        'globalCommonPrompt': globalCommonPrompt,
-        'globalNegativePrompt': globalNegativePrompt,
-        'pollingRecoveryGraceSeconds': pollingRecoveryGraceSeconds,
-        'livePreviewEnabled': livePreviewEnabled,
-        'listCellHeight': listCellHeight,
-        'gridCellWidth': gridCellWidth,
-        'cellDetailGalleryWidth': cellDetailGalleryWidth,
-        'promptAutocompleteEnabled': promptAutocompleteEnabled,
-        'lastProjectId': lastProjectId,
-        'projectsPaneExpanded': projectsPaneExpanded,
-      };
+    'themeMode': themeMode.name,
+    'seedColor': seedColor,
+    'useDynamicColor': useDynamicColor,
+    'cellLayout': cellLayout.name,
+    'mobileCellColumns': mobileCellColumns,
+    'globalApiBaseUrl': globalApiBaseUrl,
+    'defaultTimeoutSeconds': defaultTimeoutSeconds,
+    'defaultGenerationMode': defaultGenerationMode,
+    'defaultClipSkip': defaultClipSkip,
+    'globalCommonPrompt': globalCommonPrompt,
+    'globalNegativePrompt': globalNegativePrompt,
+    'pollingRecoveryGraceSeconds': pollingRecoveryGraceSeconds,
+    'livePreviewEnabled': livePreviewEnabled,
+    'listCellHeight': listCellHeight,
+    'gridCellWidth': gridCellWidth,
+    'cellDetailGalleryWidth': cellDetailGalleryWidth,
+    'promptAutocompleteEnabled': promptAutocompleteEnabled,
+    'lastProjectId': lastProjectId,
+    'projectsPaneExpanded': projectsPaneExpanded,
+  };
 
   factory AppPreferences.fromJson(Object? json) {
     final map = JsonRead.map(json) ?? const <String, Object?>{};

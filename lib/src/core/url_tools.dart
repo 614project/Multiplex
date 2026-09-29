@@ -92,8 +92,8 @@ abstract final class EndpointResolver {
     final combinedPath = basePath.isEmpty
         ? '/$requestPath'
         : requestPath.isEmpty
-            ? basePath
-            : '$basePath/$requestPath';
+        ? basePath
+        : '$basePath/$requestPath';
 
     final uri = Uri(
       scheme: base.scheme,

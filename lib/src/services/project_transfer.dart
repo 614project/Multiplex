@@ -29,11 +29,8 @@ abstract final class ProjectTransfer {
       const JsonEncoder.withIndent('  ').convert(_exportProject(project));
 
   static String serializeProjects(Iterable<ProjectData> projects) =>
-      const JsonEncoder.withIndent('  ').convert({
-        'Format': bundleFormat,
-        'Version': version,
-        'Projects': projects.map(_exportProject).toList(),
-      });
+      const JsonEncoder.withIndent('  ')
+          .convert({'Format': bundleFormat, 'Version': version, 'Projects': projects.map(_exportProject).toList()});
 
   static List<ImportedProject> deserialize(String jsonContent) {
     if (jsonContent.trim().isEmpty) {
@@ -78,27 +75,26 @@ abstract final class ProjectTransfer {
     final cells = <CellData>[];
     for (var index = 0; index < parsed.length; index++) {
       final cell = parsed[index];
-      cells.add(CellData(
-        id: newId(),
-        order: index,
-        name: cell.name.trim().isEmpty ? 'Cell ${index + 1}' : cell.name,
-        prompt: cell.prompt,
-        overrideSteps: cell.overrideSteps,
-        overrideCfgScale: cell.overrideCfgScale,
-        overrideWidth: cell.overrideWidth,
-        overrideHeight: cell.overrideHeight,
-        overrideNegativePrompt: cell.overrideNegativePrompt,
-        // Imported files are untrusted: keep an image reference only when it stays inside the project folder.
-        representativeImagePath:
-            PathSafety.isSafeRelativePath(cell.representativeImagePath) ? cell.representativeImagePath : null,
-      ));
+      cells.add(
+        CellData(
+          id: newId(),
+          order: index,
+          name: cell.name.trim().isEmpty ? 'Cell ${index + 1}' : cell.name,
+          prompt: cell.prompt,
+          overrideSteps: cell.overrideSteps,
+          overrideCfgScale: cell.overrideCfgScale,
+          overrideWidth: cell.overrideWidth,
+          overrideHeight: cell.overrideHeight,
+          overrideNegativePrompt: cell.overrideNegativePrompt,
+          // Imported files are untrusted: keep an image reference only when it stays inside the project folder.
+          representativeImagePath: PathSafety.isSafeRelativePath(cell.representativeImagePath)
+              ? cell.representativeImagePath
+              : null,
+        ),
+      );
     }
 
-    return ImportedProject(
-      name: (JsonRead.string(map, 'name') ?? '').trim(),
-      settings: settings,
-      cells: cells,
-    );
+    return ImportedProject(name: (JsonRead.string(map, 'name') ?? '').trim(), settings: settings, cells: cells);
   }
 
   static Map<String, Object?> _exportProject(ProjectData project) {
@@ -128,10 +124,7 @@ abstract final class ProjectTransfer {
 
   static Object? _pascal(Object? value) {
     if (value is Map) {
-      return {
-        for (final entry in value.entries)
-          _capitalize(entry.key.toString()): _pascal(entry.value),
-      };
+      return {for (final entry in value.entries) _capitalize(entry.key.toString()): _pascal(entry.value)};
     }
 
     if (value is List) {

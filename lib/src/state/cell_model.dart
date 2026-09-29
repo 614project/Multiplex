@@ -21,34 +21,34 @@ class CellModel extends ChangeNotifier {
     String overrideNegativePrompt = '',
     String? lastImagePath,
     String? representativeImagePath,
-  })  : _order = order,
-        _name = name,
-        _prompt = prompt,
-        _overrideSteps = overrideSteps,
-        _overrideCfgScale = overrideCfgScale,
-        _overrideWidth = overrideWidth,
-        _overrideHeight = overrideHeight,
-        _overrideNegativePrompt = overrideNegativePrompt,
-        _lastImagePath = lastImagePath,
-        _representativeImagePath = representativeImagePath {
+  }) : _order = order,
+       _name = name,
+       _prompt = prompt,
+       _overrideSteps = overrideSteps,
+       _overrideCfgScale = overrideCfgScale,
+       _overrideWidth = overrideWidth,
+       _overrideHeight = overrideHeight,
+       _overrideNegativePrompt = overrideNegativePrompt,
+       _lastImagePath = lastImagePath,
+       _representativeImagePath = representativeImagePath {
     _refreshDisplayImage();
   }
 
   /// Creates the model from stored data; relative image paths are resolved inside [projectFolder]
   /// and dropped when they would point outside of it.
   factory CellModel.fromData(CellData data, String projectFolder) => CellModel(
-        id: data.id,
-        order: data.order,
-        name: data.name,
-        prompt: data.prompt,
-        overrideSteps: data.overrideSteps,
-        overrideCfgScale: data.overrideCfgScale,
-        overrideWidth: data.overrideWidth,
-        overrideHeight: data.overrideHeight,
-        overrideNegativePrompt: data.overrideNegativePrompt,
-        lastImagePath: PathSafety.tryResolveWithinRoot(projectFolder, data.lastImagePath),
-        representativeImagePath: PathSafety.tryResolveWithinRoot(projectFolder, data.representativeImagePath),
-      );
+    id: data.id,
+    order: data.order,
+    name: data.name,
+    prompt: data.prompt,
+    overrideSteps: data.overrideSteps,
+    overrideCfgScale: data.overrideCfgScale,
+    overrideWidth: data.overrideWidth,
+    overrideHeight: data.overrideHeight,
+    overrideNegativePrompt: data.overrideNegativePrompt,
+    lastImagePath: PathSafety.tryResolveWithinRoot(projectFolder, data.lastImagePath),
+    representativeImagePath: PathSafety.tryResolveWithinRoot(projectFolder, data.representativeImagePath),
+  );
 
   final String id;
   VoidCallback? onEdited;
@@ -103,11 +103,11 @@ class CellModel extends ChangeNotifier {
 
   /// Short labels of the active overrides, for chips on the cell card.
   List<String> get overrideLabels => [
-        if (_overrideSteps != null) '$_overrideSteps steps',
-        if (_overrideCfgScale != null) 'CFG ${_formatNumber(_overrideCfgScale!)}',
-        if (_overrideWidth != null || _overrideHeight != null) '${_overrideWidth ?? '·'}×${_overrideHeight ?? '·'}',
-        if (_overrideNegativePrompt.trim().isNotEmpty) '+ negative',
-      ];
+    if (_overrideSteps != null) '$_overrideSteps steps',
+    if (_overrideCfgScale != null) 'CFG ${_formatNumber(_overrideCfgScale!)}',
+    if (_overrideWidth != null || _overrideHeight != null) '${_overrideWidth ?? '·'}×${_overrideHeight ?? '·'}',
+    if (_overrideNegativePrompt.trim().isNotEmpty) '+ negative',
+  ];
 
   void setOverrides({
     required int? steps,
@@ -116,7 +116,8 @@ class CellModel extends ChangeNotifier {
     required int? height,
     required String negativePrompt,
   }) {
-    final changed = steps != _overrideSteps ||
+    final changed =
+        steps != _overrideSteps ||
         cfgScale != _overrideCfgScale ||
         width != _overrideWidth ||
         height != _overrideHeight ||
@@ -132,15 +133,15 @@ class CellModel extends ChangeNotifier {
 
   String? get lastImagePath => _lastImagePath;
   set lastImagePath(String? value) => _edit(() {
-        _lastImagePath = value;
-        _refreshDisplayImage();
-      }, _lastImagePath != value);
+    _lastImagePath = value;
+    _refreshDisplayImage();
+  }, _lastImagePath != value);
 
   String? get representativeImagePath => _representativeImagePath;
   set representativeImagePath(String? value) => _edit(() {
-        _representativeImagePath = value;
-        _refreshDisplayImage();
-      }, _representativeImagePath != value);
+    _representativeImagePath = value;
+    _refreshDisplayImage();
+  }, _representativeImagePath != value);
 
   /// The representative image when it exists, otherwise the newest image.
   String? get displayImagePath => _displayImagePath;
@@ -212,29 +213,29 @@ class CellModel extends ChangeNotifier {
   }
 
   CellData toData(String projectFolder) => CellData(
-        id: id,
-        order: _order,
-        name: displayName,
-        prompt: _prompt,
-        overrideSteps: _overrideSteps,
-        overrideCfgScale: _overrideCfgScale,
-        overrideWidth: _overrideWidth,
-        overrideHeight: _overrideHeight,
-        overrideNegativePrompt: _overrideNegativePrompt,
-        lastImagePath: _relative(projectFolder, _lastImagePath),
-        representativeImagePath: _relative(projectFolder, _representativeImagePath),
-      );
+    id: id,
+    order: _order,
+    name: displayName,
+    prompt: _prompt,
+    overrideSteps: _overrideSteps,
+    overrideCfgScale: _overrideCfgScale,
+    overrideWidth: _overrideWidth,
+    overrideHeight: _overrideHeight,
+    overrideNegativePrompt: _overrideNegativePrompt,
+    lastImagePath: _relative(projectFolder, _lastImagePath),
+    representativeImagePath: _relative(projectFolder, _representativeImagePath),
+  );
 
   CellSnapshot snapshot() => CellSnapshot(
-        id: id,
-        displayName: displayName,
-        prompt: _prompt,
-        overrideSteps: _overrideSteps,
-        overrideCfgScale: _overrideCfgScale,
-        overrideWidth: _overrideWidth,
-        overrideHeight: _overrideHeight,
-        overrideNegativePrompt: _overrideNegativePrompt,
-      );
+    id: id,
+    displayName: displayName,
+    prompt: _prompt,
+    overrideSteps: _overrideSteps,
+    overrideCfgScale: _overrideCfgScale,
+    overrideWidth: _overrideWidth,
+    overrideHeight: _overrideHeight,
+    overrideNegativePrompt: _overrideNegativePrompt,
+  );
 
   static String? _relative(String projectFolder, String? fullPath) =>
       fullPath == null ? null : PathSafety.toPortableRelative(projectFolder, fullPath);

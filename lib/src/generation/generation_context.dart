@@ -16,15 +16,15 @@ class CellSnapshot {
   });
 
   factory CellSnapshot.fromData(CellData cell, String displayName) => CellSnapshot(
-        id: cell.id,
-        displayName: displayName,
-        prompt: cell.prompt,
-        overrideSteps: cell.overrideSteps,
-        overrideCfgScale: cell.overrideCfgScale,
-        overrideWidth: cell.overrideWidth,
-        overrideHeight: cell.overrideHeight,
-        overrideNegativePrompt: cell.overrideNegativePrompt,
-      );
+    id: cell.id,
+    displayName: displayName,
+    prompt: cell.prompt,
+    overrideSteps: cell.overrideSteps,
+    overrideCfgScale: cell.overrideCfgScale,
+    overrideWidth: cell.overrideWidth,
+    overrideHeight: cell.overrideHeight,
+    overrideNegativePrompt: cell.overrideNegativePrompt,
+  );
 
   final String id;
   final String displayName;
@@ -110,20 +110,16 @@ class GenerationContext {
   bool get isPollingMode => platform.isWebUi && generationMode == GenerationModes.pollingProxySafe;
 
   static List<CellSnapshot> roundRobin(List<CellSnapshot> cells, int repeatCount) => [
-        for (var round = 0; round < (repeatCount < 1 ? 1 : repeatCount); round++) ...cells,
-      ];
+    for (var round = 0; round < (repeatCount < 1 ? 1 : repeatCount); round++) ...cells,
+  ];
 }
 
 /// One entry of a project's generation queue.
 class GenerationJob {
-  GenerationJob({
-    required this.sequence,
-    required this.context,
-    required this.title,
-    required this.description,
-  })  : createdAt = DateTime.now(),
-        totalImages = context.targets.length,
-        cellCount = context.targets.map((cell) => cell.id).toSet().length;
+  GenerationJob({required this.sequence, required this.context, required this.title, required this.description})
+    : createdAt = DateTime.now(),
+      totalImages = context.targets.length,
+      cellCount = context.targets.map((cell) => cell.id).toSet().length;
 
   final int sequence;
   final GenerationContext context;
@@ -158,7 +154,8 @@ class GenerationJob {
       sequence: sequence,
       context: context,
       title: cellCount == 1 ? firstName : '$cellCount cells',
-      description: '${context.platform.label} · $rounds round${rounds == 1 ? '' : 's'} · '
+      description:
+          '${context.platform.label} · $rounds round${rounds == 1 ? '' : 's'} · '
           '$images image${images == 1 ? '' : 's'}',
     );
   }

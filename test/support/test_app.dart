@@ -33,11 +33,9 @@ Future<TestApp> createTestApp(FakeSdServer server, {Map<String, Object?> prefere
   final directory = await Directory.systemTemp.createTemp('multiplex-test-');
   final paths = AppPaths(directory.path);
   await File(paths.preferencesFile).create(recursive: true);
-  await File(paths.preferencesFile).writeAsString(jsonEncode({
-    'promptAutocompleteEnabled': false,
-    'pollingRecoveryGraceSeconds': 0,
-    ...preferences,
-  }));
+  await File(
+    paths.preferencesFile,
+  ).writeAsString(jsonEncode({'promptAutocompleteEnabled': false, 'pollingRecoveryGraceSeconds': 0, ...preferences}));
 
   final app = AppState(paths: paths, httpClientFactory: () => MockClient(server.handle));
   final messages = <AppMessage>[];

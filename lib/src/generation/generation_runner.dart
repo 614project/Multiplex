@@ -275,9 +275,11 @@ class GenerationRunner {
         }
 
         final remaining = (recoveryDeadline.difference(DateTime.now()).inMilliseconds / 1000).ceil();
-        host.setStatus(remaining > 0
-            ? 'Waiting for a newer final preview... ($current/$total) [${remaining}s]'
-            : 'Collecting final preview... ($current/$total)');
+        host.setStatus(
+          remaining > 0
+              ? 'Waiting for a newer final preview... ($current/$total) [${remaining}s]'
+              : 'Collecting final preview... ($current/$total)',
+        );
         await token.delay(const Duration(milliseconds: 500));
         continue;
       }
@@ -608,7 +610,9 @@ class GenerationRunner {
       _updateAgentStatusText(snapshot, queued.position, total, expectTwoPass);
       _publishPreview(queued.cell, snapshot);
 
-      if (!prefetchTriggered && tryPrefetchNext != null && _shouldPrefetchNextAgentGeneration(snapshot, completionObservedAt)) {
+      if (!prefetchTriggered &&
+          tryPrefetchNext != null &&
+          _shouldPrefetchNextAgentGeneration(snapshot, completionObservedAt)) {
         prefetchTriggered = true;
         await tryPrefetchNext();
       }
@@ -620,7 +624,9 @@ class GenerationRunner {
           await tryPrefetchNext();
         }
 
-        final grace = Duration(seconds: context.pollingRecoveryGraceSeconds < 1 ? 1 : context.pollingRecoveryGraceSeconds);
+        final grace = Duration(
+          seconds: context.pollingRecoveryGraceSeconds < 1 ? 1 : context.pollingRecoveryGraceSeconds,
+        );
         if (!DateTime.now().isBefore(completionObservedAt.add(grace))) {
           result = await _tryGetAgentSchedulerResult(context.apiBaseUrl, queued.queueTaskId, token);
           if (result != null) {
@@ -1014,10 +1020,10 @@ class GenerationRunner {
     final source = tracker.internalAvailable && tracker.classicAvailable
         ? '/internal/progress and /sdapi/v1/progress'
         : tracker.internalAvailable
-            ? '/internal/progress'
-            : tracker.classicAvailable
-                ? '/sdapi/v1/progress'
-                : 'the available progress APIs';
+        ? '/internal/progress'
+        : tracker.classicAvailable
+        ? '/sdapi/v1/progress'
+        : 'the available progress APIs';
 
     if (expectTwoPass && !tracker.sawExpectedFinalPass) {
       return 'The proxy dropped the final txt2img response before Hires.fix reached a recoverable second-pass preview image.';
@@ -1115,7 +1121,7 @@ class WebUiProgressSnapshot {
 /// image (with Hires.fix only previews from the second pass qualify).
 class WebUiRecoveryTracker {
   WebUiRecoveryTracker(int minimumAcceptablePixelCount)
-      : _minimumPixels = minimumAcceptablePixelCount < 0 ? 0 : minimumAcceptablePixelCount;
+    : _minimumPixels = minimumAcceptablePixelCount < 0 ? 0 : minimumAcceptablePixelCount;
 
   final int _minimumPixels;
   int lastInternalLivePreviewId = -1;
@@ -1147,7 +1153,8 @@ class WebUiRecoveryTracker {
       return;
     }
 
-    final canUse = !expectTwoPass ||
+    final canUse =
+        !expectTwoPass ||
         internal?.completed == true ||
         finalPassStarted ||
         GenerationRunner.isGenerationIdle(snapshot.classic);

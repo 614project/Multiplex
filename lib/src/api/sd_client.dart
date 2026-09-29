@@ -50,7 +50,7 @@ class ServerCheckResult {
 /// HTTP client for Stable Diffusion WebUI (A1111/Forge), its Agent Scheduler extension and ComfyUI.
 class SdClient {
   SdClient({http.Client? httpClient, this.comfyPollInterval = const Duration(seconds: 1)})
-      : _http = httpClient ?? http.Client();
+    : _http = httpClient ?? http.Client();
 
   static const agentSchedulerSupportCacheLifetime = Duration(minutes: 5);
 
@@ -70,12 +70,7 @@ class SdClient {
   }
 
   Future<ProgressResponse> getProgress(String baseUrl, CancellationToken token, {bool skipCurrentImage = true}) async {
-    final json = await _sendJson(
-      'GET',
-      baseUrl,
-      '/sdapi/v1/progress?skip_current_image=$skipCurrentImage',
-      token,
-    );
+    final json = await _sendJson('GET', baseUrl, '/sdapi/v1/progress?skip_current_image=$skipCurrentImage', token);
     return ProgressResponse.fromJson(json);
   }
 
@@ -132,10 +127,7 @@ class SdClient {
         final device = devices.isEmpty ? null : JsonRead.map(devices.first)?['name'];
         return ServerCheckResult(
           ok: true,
-          message: [
-            'ComfyUI${version is String ? ' $version' : ''}',
-            if (device is String) device,
-          ].join(' · '),
+          message: ['ComfyUI${version is String ? ' $version' : ''}', if (device is String) device].join(' · '),
         );
       }
 
@@ -175,7 +167,8 @@ class SdClient {
       if (_isSuccess(response.statusCode)) {
         final paths = JsonRead.map(JsonRead.map(_decodeJson(response))?['paths']);
         if (paths != null) {
-          result = paths.containsKey('/agent-scheduler/v1/queue/txt2img') &&
+          result =
+              paths.containsKey('/agent-scheduler/v1/queue/txt2img') &&
               paths.containsKey('/agent-scheduler/v1/results/{id}');
         }
       }
@@ -323,8 +316,10 @@ class SdClient {
     final prompt = ComfyWorkflow.buildTxt2ImgPrompt(
       request,
       checkpoint: checkpoint,
-      latentUpscaleMethod:
-          ComfyWorkflow.resolveLatentUpscaleMethod(request.hiresUpscaler, metadata.latentUpscaleMethods),
+      latentUpscaleMethod: ComfyWorkflow.resolveLatentUpscaleMethod(
+        request.hiresUpscaler,
+        metadata.latentUpscaleMethods,
+      ),
       loraLoaderType: ComfyWorkflow.resolveLoraLoaderType(
         request.comfyLoraLoaderType,
         metadata.availableLoraLoaderTypes,
@@ -636,9 +631,7 @@ class SdClient {
     );
   }
 
-  static ({String fileName, String subfolder, String type})? _tryGetComfyImageReference(
-    Map<String, Object?> record,
-  ) {
+  static ({String fileName, String subfolder, String type})? _tryGetComfyImageReference(Map<String, Object?> record) {
     final outputs = JsonRead.map(record['outputs']);
     if (outputs == null) {
       return null;
@@ -705,8 +698,8 @@ class SdClient {
     final keys = preferLabel
         ? const ['label', 'title', 'alias', 'name', 'filename', 'model_name']
         : preferName
-            ? const ['name', 'title', 'alias', 'label', 'filename', 'model_name']
-            : const ['title', 'alias', 'name', 'filename', 'model_name', 'label'];
+        ? const ['name', 'title', 'alias', 'label', 'filename', 'model_name']
+        : const ['title', 'alias', 'name', 'filename', 'model_name', 'label'];
     final values = <String>[];
     for (final item in json) {
       String? name;
@@ -731,13 +724,7 @@ class SdClient {
     return values;
   }
 
-  Future<Object?> _sendJson(
-    String method,
-    String baseUrl,
-    String path,
-    CancellationToken token, {
-    Object? body,
-  }) async {
+  Future<Object?> _sendJson(String method, String baseUrl, String path, CancellationToken token, {Object? body}) async {
     final response = await _send(method, baseUrl, path, token, body: body);
     _ensureSuccess(response, path);
     return _decodeJson(response);
@@ -849,15 +836,16 @@ class SdClient {
     return details == null || message == details ? message : '$message ($details)';
   }
 
-  static String? _nonEmpty(Object? value) =>
-      value is String && value.trim().isNotEmpty ? value.trim() : null;
+  static String? _nonEmpty(Object? value) => value is String && value.trim().isNotEmpty ? value.trim() : null;
 
   /// Human readable description of a failure for messages shown to the user.
   static String describeError(Object error) {
     if (error is http.ClientException) {
       final message = error.message;
       final lower = message.toLowerCase();
-      if (lower.contains('connection refused') || lower.contains('failed host lookup') || lower.contains('network is unreachable')) {
+      if (lower.contains('connection refused') ||
+          lower.contains('failed host lookup') ||
+          lower.contains('network is unreachable')) {
         return 'Could not reach the server (${error.uri ?? 'unknown address'}). Check the API base URL and that the server is running with network access enabled.';
       }
 

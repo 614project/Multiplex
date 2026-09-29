@@ -31,8 +31,8 @@ class RecordingClient {
   final List<RecordedRequest> requests = [];
 
   static http.Response json(Object? body, [int statusCode = 200]) => http.Response(
-        body is String ? body : jsonEncode(body),
-        statusCode,
-        headers: {'content-type': 'application/json; charset=utf-8'},
-      );
+    body is String ? body : jsonEncode(body),
+    statusCode,
+    headers: {'content-type': 'application/json; charset=utf-8'},
+  );
 }

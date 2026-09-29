@@ -23,10 +23,7 @@ abstract final class PathSafety {
   /// result lies strictly inside [rootFolder].
   static String? tryResolveWithinRoot(String rootFolder, String? storedPath, {p.Context? context}) {
     final pathContext = context ?? p.context;
-    if (rootFolder.trim().isEmpty ||
-        storedPath == null ||
-        storedPath.trim().isEmpty ||
-        storedPath.contains('\u0000')) {
+    if (rootFolder.trim().isEmpty || storedPath == null || storedPath.trim().isEmpty || storedPath.contains('\u0000')) {
       return null;
     }
 
@@ -35,9 +32,7 @@ abstract final class PathSafety {
         : storedPath.replaceAll(r'\', '/');
     final root = pathContext.normalize(pathContext.absolute(rootFolder));
     final candidate = pathContext.normalize(
-      pathContext.isAbsolute(normalizedStored)
-          ? normalizedStored
-          : pathContext.join(root, normalizedStored),
+      pathContext.isAbsolute(normalizedStored) ? normalizedStored : pathContext.join(root, normalizedStored),
     );
 
     return pathContext.isWithin(root, candidate) ? candidate : null;

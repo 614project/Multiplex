@@ -70,11 +70,16 @@ void main() {
 
     test('strips pasted API roots and keeps sub paths and queries', () {
       expect(
-        EndpointResolver.resolve('http://host:7860/sdapi/v1/', '/sdapi/v1/progress?skip_current_image=true').uri.toString(),
+        EndpointResolver.resolve(
+          'http://host:7860/sdapi/v1/',
+          '/sdapi/v1/progress?skip_current_image=true',
+        ).uri.toString(),
         'http://host:7860/sdapi/v1/progress?skip_current_image=true',
       );
-      expect(EndpointResolver.resolve('https://host/webui/docs', '/internal/progress').uri.toString(),
-          'https://host/webui/internal/progress');
+      expect(
+        EndpointResolver.resolve('https://host/webui/docs', '/internal/progress').uri.toString(),
+        'https://host/webui/internal/progress',
+      );
     });
 
     test('rejects relative base URLs', () {
@@ -159,7 +164,10 @@ void main() {
 
     test('detects JPEG', () => expect(ImageSignature.detectExtension([0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10]), '.jpg'));
 
-    test('detects WebP', () => expect(ImageSignature.detectExtension('RIFF\u0000\u0000\u0000\u0000WEBPVP8 '.codeUnits), '.webp'));
+    test(
+      'detects WebP',
+      () => expect(ImageSignature.detectExtension('RIFF\u0000\u0000\u0000\u0000WEBPVP8 '.codeUnits), '.webp'),
+    );
 
     test('detects BMP', () => expect(ImageSignature.detectExtension('BM\u0000\u0000\u0000\u0000'.codeUnits), '.bmp'));
 

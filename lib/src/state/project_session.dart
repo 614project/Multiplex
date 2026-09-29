@@ -103,9 +103,7 @@ class GenerationState extends ChangeNotifier {
 
 /// Everything about one open project: settings, cells, option lists, queue and autosave.
 class ProjectSession extends ChangeNotifier implements GenerationHost {
-  ProjectSession(this.env, ProjectData data)
-      : metadata = data.metadata,
-        settings = data.settings {
+  ProjectSession(this.env, ProjectData data) : metadata = data.metadata, settings = data.settings {
     for (final cell in data.cells) {
       _attach(CellModel.fromData(cell, projectFolder));
     }
@@ -190,7 +188,8 @@ class ProjectSession extends ChangeNotifier implements GenerationHost {
   int get effectiveTimeoutSeconds =>
       settings.timeoutSeconds > 0 ? settings.timeoutSeconds : env.preferences.defaultTimeoutSeconds;
 
-  int get effectiveClipSkip => settings.clipSkip >= 1 ? settings.clipSkip.clamp(1, 24) : env.preferences.defaultClipSkip;
+  int get effectiveClipSkip =>
+      settings.clipSkip >= 1 ? settings.clipSkip.clamp(1, 24) : env.preferences.defaultClipSkip;
 
   String get effectiveGenerationMode => settings.generationMode.isEmpty
       ? GenerationModes.normalizeForPlatform(settings.platform, env.preferences.defaultGenerationMode)
@@ -252,11 +251,11 @@ class ProjectSession extends ChangeNotifier implements GenerationHost {
   void setCheckpoint(String name) => edit((settings) => settings.checkpointModel = name.trim());
 
   void setLoras(List<LoraSelection> loras, {String? comfyLoaderType}) => edit((settings) {
-        settings.selectedLoras = LoraSelection.normalize(loras);
-        if (comfyLoaderType != null) {
-          settings.comfyLoraLoaderType = ComfyLoraLoaderTypes.normalize(comfyLoaderType);
-        }
-      });
+    settings.selectedLoras = LoraSelection.normalize(loras);
+    if (comfyLoaderType != null) {
+      settings.comfyLoraLoaderType = ComfyLoraLoaderTypes.normalize(comfyLoaderType);
+    }
+  });
 
   void rename(String newName) {
     final trimmed = newName.trim();
@@ -306,10 +305,16 @@ class ProjectSession extends ChangeNotifier implements GenerationHost {
 
   void _resolveSelectedOptions() {
     final platform = settings.platform;
-    settings.samplerName =
-        OptionLists.resolveOption(settings.samplerName, samplerOptions, OptionLists.defaultSampler(platform));
-    settings.scheduler =
-        OptionLists.resolveOption(settings.scheduler, schedulerOptions, OptionLists.defaultScheduler(platform));
+    settings.samplerName = OptionLists.resolveOption(
+      settings.samplerName,
+      samplerOptions,
+      OptionLists.defaultSampler(platform),
+    );
+    settings.scheduler = OptionLists.resolveOption(
+      settings.scheduler,
+      schedulerOptions,
+      OptionLists.defaultScheduler(platform),
+    );
     settings.hiresUpscaler = platform.isComfyUi
         ? ComfyWorkflow.resolveLatentUpscaleMethod(settings.hiresUpscaler, hiresUpscalerOptions)
         : OptionLists.resolveOption(
@@ -504,8 +509,10 @@ class ProjectSession extends ChangeNotifier implements GenerationHost {
       OptionLists.defaultHiresUpscaler(platform),
     );
     _resolveSelectedOptions();
-    settings.comfyLoraLoaderType =
-        ComfyWorkflow.resolveLoraLoaderType(settings.comfyLoraLoaderType, metadata.availableLoraLoaderTypes);
+    settings.comfyLoraLoaderType = ComfyWorkflow.resolveLoraLoaderType(
+      settings.comfyLoraLoaderType,
+      metadata.availableLoraLoaderTypes,
+    );
     notifyListeners();
   }
 
@@ -828,10 +835,13 @@ class ProjectSession extends ChangeNotifier implements GenerationHost {
       timeout: Duration(seconds: effectiveTimeoutSeconds),
       generationMode: effectiveGenerationMode,
       clipSkip: effectiveClipSkip,
-      globalCommonPrompt: settings.overrideGlobalCommonPrompt ? settings.globalCommonPromptOverride : prefs.globalCommonPrompt,
+      globalCommonPrompt: settings.overrideGlobalCommonPrompt
+          ? settings.globalCommonPromptOverride
+          : prefs.globalCommonPrompt,
       commonPrompt: settings.commonPrompt,
-      globalNegativePrompt:
-          settings.overrideGlobalNegativePrompt ? settings.globalNegativePromptOverride : prefs.globalNegativePrompt,
+      globalNegativePrompt: settings.overrideGlobalNegativePrompt
+          ? settings.globalNegativePromptOverride
+          : prefs.globalNegativePrompt,
       negativePrompt: settings.negativePrompt,
       steps: settings.steps < 1 ? 1 : settings.steps,
       cfgScale: settings.cfgScale < 1 ? 1 : settings.cfgScale,
@@ -1148,8 +1158,10 @@ class ProjectSession extends ChangeNotifier implements GenerationHost {
     } catch (error, stackTrace) {
       // Keep the changes marked so the next autosave retries them.
       AppLog.write('Saving project $id', error, stackTrace);
-      env.messenger.error('Failed to save project "$name": ${SdClient.describeError(error)} '
-          'The changes are kept and saving will be retried.');
+      env.messenger.error(
+        'Failed to save project "$name": ${SdClient.describeError(error)} '
+        'The changes are kept and saving will be retried.',
+      );
       _dirty = true;
       _saveTimer?.cancel();
       _saveTimer = Timer(const Duration(seconds: 5), () => unawaited(saveNow()));

@@ -71,8 +71,7 @@ class LoraSelection {
   }
 
   @override
-  bool operator ==(Object other) =>
-      other is LoraSelection && other.name == name && other.weight == weight;
+  bool operator ==(Object other) => other is LoraSelection && other.name == name && other.weight == weight;
 
   @override
   int get hashCode => Object.hash(name, weight);

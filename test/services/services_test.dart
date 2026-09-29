@@ -32,21 +32,25 @@ Uint8List pngWithChunks(List<(String, List<int>)> chunks, {int width = 16, int h
   return builder.toBytes();
 }
 
-GeneratedImageMetadata read(Uint8List bytes) => PngMetadataReader.readBytes(
-      bytes,
-      GeneratedImageMetadata(filePath: 'x.png', generatedAt: DateTime(2026)),
-    );
+GeneratedImageMetadata read(Uint8List bytes) =>
+    PngMetadataReader.readBytes(bytes, GeneratedImageMetadata(filePath: 'x.png', generatedAt: DateTime(2026)));
 
 void main() {
   group('PngMetadataReader', () {
     test('parses WebUI infotext including Hires.fix details', () {
-      const infotext = 'masterpiece, a cat <lora:style:0.8>\n'
+      const infotext =
+          'masterpiece, a cat <lora:style:0.8>\n'
           'Negative prompt: lowres, blurry\n'
           'Steps: 28, Sampler: DPM++ 2M, Schedule type: Karras, CFG scale: 6.5, Seed: 1234, Size: 512x768, '
           'Model: sdxl-base, Denoising strength: 0.45, Clip skip: 2, Hires upscale: 2, Hires steps: 12, '
           'Hires upscaler: Latent, Lora hashes: "style: abc123", Version: v1.10.1';
-      final bytes = pngWithChunks([('tEXt', [...latin1.encode('parameters'), 0, ...utf8.encode(infotext)])],
-          width: 1024, height: 1536);
+      final bytes = pngWithChunks(
+        [
+          ('tEXt', [...latin1.encode('parameters'), 0, ...utf8.encode(infotext)]),
+        ],
+        width: 1024,
+        height: 1536,
+      );
       final metadata = read(bytes);
 
       expect(metadata.metadataParsed, isTrue);
@@ -68,15 +72,19 @@ void main() {
 
     test('reads compressed zTXt and iTXt chunks', () {
       final compressed = const ZLibEncoder().encodeBytes(utf8.encode('a dog\nSteps: 10, Seed: 7'));
-      final metadata = read(pngWithChunks([
-        ('zTXt', [...latin1.encode('parameters'), 0, 0, ...compressed]),
-      ]));
+      final metadata = read(
+        pngWithChunks([
+          ('zTXt', [...latin1.encode('parameters'), 0, 0, ...compressed]),
+        ]),
+      );
       expect(metadata.positivePrompt, 'a dog');
       expect(metadata.steps, 10);
 
-      final international = read(pngWithChunks([
-        ('iTXt', [...latin1.encode('parameters'), 0, 0, 0, 0, 0, ...utf8.encode('고양이\nSteps: 5')]),
-      ]));
+      final international = read(
+        pngWithChunks([
+          ('iTXt', [...latin1.encode('parameters'), 0, 0, 0, 0, 0, ...utf8.encode('고양이\nSteps: 5')]),
+        ]),
+      );
       expect(international.positivePrompt, '고양이');
       expect(international.steps, 5);
     });

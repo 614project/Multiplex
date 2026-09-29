@@ -109,11 +109,9 @@ abstract final class OptionLists {
 
   static const comfyHiresUpscalers = <String>['bislerp', 'bicubic', 'nearest-exact', 'bilinear', 'area'];
 
-  static List<String> samplerDefaults(ApiPlatform platform) =>
-      platform.isComfyUi ? comfySamplers : webUiSamplers;
+  static List<String> samplerDefaults(ApiPlatform platform) => platform.isComfyUi ? comfySamplers : webUiSamplers;
 
-  static List<String> schedulerDefaults(ApiPlatform platform) =>
-      platform.isComfyUi ? comfySchedulers : webUiSchedulers;
+  static List<String> schedulerDefaults(ApiPlatform platform) => platform.isComfyUi ? comfySchedulers : webUiSchedulers;
 
   static List<String> hiresUpscalerDefaults(ApiPlatform platform) =>
       platform.isComfyUi ? comfyHiresUpscalers : webUiHiresUpscalers;

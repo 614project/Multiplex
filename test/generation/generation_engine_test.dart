@@ -61,8 +61,10 @@ void main() {
     ]);
     expect(prompts.skip(4), prompts.take(4));
     expect(server.txt2imgRequests.first['prompt'], endsWith('<lora:style-a:0.7>'));
-    expect(server.txt2imgRequests.first['override_settings'],
-        {'sd_model_checkpoint': FakeSdServer.checkpoints[1], 'CLIP_stop_at_last_layers': 2});
+    expect(server.txt2imgRequests.first['override_settings'], {
+      'sd_model_checkpoint': FakeSdServer.checkpoints[1],
+      'CLIP_stop_at_last_layers': 2,
+    });
     expect(server.txt2imgRequests[1]['steps'], 30);
     expect(server.txt2imgRequests[1]['width'], 640);
     expect(server.txt2imgRequests[1]['negative_prompt'], 'blurry');
@@ -145,7 +147,9 @@ void main() {
   });
 
   test('polling mode recovers the final preview when the proxy drops the response', () async {
-    await setUpApp(fake: FakeSdServer(dropFinalTxt2ImgResponse: true, generationTime: const Duration(milliseconds: 300)));
+    await setUpApp(
+      fake: FakeSdServer(dropFinalTxt2ImgResponse: true, generationTime: const Duration(milliseconds: 300)),
+    );
     final project = session()..edit((settings) => settings.generationMode = 'Polling (Proxy Safe)');
     project.regenerate(project.cells.first);
     await waitForIdle();

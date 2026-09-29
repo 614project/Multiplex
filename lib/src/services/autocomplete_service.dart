@@ -16,10 +16,12 @@ class AutocompleteService extends ChangeNotifier {
 
   static const minimumFragmentLength = 2;
   static const defaultMaxSuggestions = 8;
-  static final Uri danbooruTagsUri =
-      Uri.parse('https://raw.githubusercontent.com/dreamscapeai/tagcomplete/main/tags/danbooru.csv');
-  static final Uri extraQualityTagsUri =
-      Uri.parse('https://raw.githubusercontent.com/dreamscapeai/tagcomplete/main/tags/extra-quality-tags.csv');
+  static final Uri danbooruTagsUri = Uri.parse(
+    'https://raw.githubusercontent.com/dreamscapeai/tagcomplete/main/tags/danbooru.csv',
+  );
+  static final Uri extraQualityTagsUri = Uri.parse(
+    'https://raw.githubusercontent.com/dreamscapeai/tagcomplete/main/tags/extra-quality-tags.csv',
+  );
 
   final AppPaths paths;
   final http.Client _http;

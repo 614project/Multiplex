@@ -18,11 +18,11 @@ import 'project_session.dart';
 /// Root state: preferences, the project list, the selected project and shared services.
 class AppState extends ChangeNotifier implements SessionEnvironment {
   AppState({required this.paths, http.Client Function()? httpClientFactory})
-      : store = ProjectStore(paths),
-        _preferencesStore = PreferencesStore(paths.preferencesFile),
-        comfyCache = ComfyMetadataCache(paths.comfyMetadataCacheFile),
-        autocomplete = AutocompleteService(paths),
-        _httpClientFactory = httpClientFactory;
+    : store = ProjectStore(paths),
+      _preferencesStore = PreferencesStore(paths.preferencesFile),
+      comfyCache = ComfyMetadataCache(paths.comfyMetadataCacheFile),
+      autocomplete = AutocompleteService(paths),
+      _httpClientFactory = httpClientFactory;
 
   @override
   final AppPaths paths;
@@ -162,32 +162,32 @@ class AppState extends ChangeNotifier implements SessionEnvironment {
   }
 
   Future<ProjectSession?> createProject({String? name}) => _runBusy<ProjectSession?>(() async {
-        try {
-          final session = ProjectSession(this, await store.create(name ?? ProjectStore.defaultProjectName()));
-          _projects.insert(0, session);
-          select(session);
-          return session;
-        } catch (error, stackTrace) {
-          AppLog.write('Creating project', error, stackTrace);
-          messenger.error('Failed to create project: $error');
-          return null;
-        }
-      });
+    try {
+      final session = ProjectSession(this, await store.create(name ?? ProjectStore.defaultProjectName()));
+      _projects.insert(0, session);
+      select(session);
+      return session;
+    } catch (error, stackTrace) {
+      AppLog.write('Creating project', error, stackTrace);
+      messenger.error('Failed to create project: $error');
+      return null;
+    }
+  });
 
   Future<ProjectSession?> cloneProject(ProjectSession source) => _runBusy<ProjectSession?>(() async {
-        try {
-          await source.saveNow();
-          final session = ProjectSession(this, await store.clone(source.snapshot()));
-          _projects.insert(0, session);
-          select(session);
-          messenger.success('Project cloned.');
-          return session;
-        } catch (error, stackTrace) {
-          AppLog.write('Cloning project ${source.id}', error, stackTrace);
-          messenger.error('Failed to clone project: $error');
-          return null;
-        }
-      });
+    try {
+      await source.saveNow();
+      final session = ProjectSession(this, await store.clone(source.snapshot()));
+      _projects.insert(0, session);
+      select(session);
+      messenger.success('Project cloned.');
+      return session;
+    } catch (error, stackTrace) {
+      AppLog.write('Cloning project ${source.id}', error, stackTrace);
+      messenger.error('Failed to clone project: $error');
+      return null;
+    }
+  });
 
   Future<void> removeProject(ProjectSession session) async {
     if (session.generation.hasWork) {
@@ -238,9 +238,9 @@ class AppState extends ChangeNotifier implements SessionEnvironment {
 
         _projects.insertAll(0, sessions);
         select(sessions.first);
-        messenger.success(sessions.length == 1
-            ? 'Project "${sessions.first.name}" imported.'
-            : 'Imported ${sessions.length} projects.');
+        messenger.success(
+          sessions.length == 1 ? 'Project "${sessions.first.name}" imported.' : 'Imported ${sessions.length} projects.',
+        );
         return sessions.length;
       } catch (error, stackTrace) {
         AppLog.write('Importing projects', error, stackTrace);

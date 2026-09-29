@@ -13,13 +13,7 @@ class ProjectMetadata {
 
   factory ProjectMetadata.create(String name) {
     final now = DateTime.now();
-    return ProjectMetadata(
-      id: newId(),
-      name: name,
-      createdAt: now,
-      updatedAt: now,
-      lastOpenedAt: now,
-    );
+    return ProjectMetadata(id: newId(), name: name, createdAt: now, updatedAt: now, lastOpenedAt: now);
   }
 
   final String id;
@@ -28,21 +22,16 @@ class ProjectMetadata {
   DateTime updatedAt;
   DateTime lastOpenedAt;
 
-  ProjectMetadata copy() => ProjectMetadata(
-        id: id,
-        name: name,
-        createdAt: createdAt,
-        updatedAt: updatedAt,
-        lastOpenedAt: lastOpenedAt,
-      );
+  ProjectMetadata copy() =>
+      ProjectMetadata(id: id, name: name, createdAt: createdAt, updatedAt: updatedAt, lastOpenedAt: lastOpenedAt);
 
   Map<String, Object?> toJson() => {
-        'id': id,
-        'name': name,
-        'createdAt': createdAt.toUtc().toIso8601String(),
-        'updatedAt': updatedAt.toUtc().toIso8601String(),
-        'lastOpenedAt': lastOpenedAt.toUtc().toIso8601String(),
-      };
+    'id': id,
+    'name': name,
+    'createdAt': createdAt.toUtc().toIso8601String(),
+    'updatedAt': updatedAt.toUtc().toIso8601String(),
+    'lastOpenedAt': lastOpenedAt.toUtc().toIso8601String(),
+  };
 
   static ProjectMetadata fromJson(Object? json, {required String fallbackId}) {
     final map = JsonRead.map(json) ?? const <String, Object?>{};
@@ -89,19 +78,19 @@ class CellData {
   DateTime updatedAt;
 
   Map<String, Object?> toJson() => {
-        'id': id,
-        'order': order,
-        'name': name,
-        'prompt': prompt,
-        'overrideSteps': overrideSteps,
-        'overrideCfgScale': overrideCfgScale,
-        'overrideWidth': overrideWidth,
-        'overrideHeight': overrideHeight,
-        'overrideNegativePrompt': overrideNegativePrompt,
-        'lastImagePath': lastImagePath,
-        'representativeImagePath': representativeImagePath,
-        'updatedAt': updatedAt.toUtc().toIso8601String(),
-      };
+    'id': id,
+    'order': order,
+    'name': name,
+    'prompt': prompt,
+    'overrideSteps': overrideSteps,
+    'overrideCfgScale': overrideCfgScale,
+    'overrideWidth': overrideWidth,
+    'overrideHeight': overrideHeight,
+    'overrideNegativePrompt': overrideNegativePrompt,
+    'lastImagePath': lastImagePath,
+    'representativeImagePath': representativeImagePath,
+    'updatedAt': updatedAt.toUtc().toIso8601String(),
+  };
 
   /// Reads Multiplex cells as well as WebuiMultiflex `ExportedCell` objects.
   static CellData fromJson(Object? json, {int fallbackOrder = 0}) {
@@ -138,24 +127,21 @@ class ProjectData {
 
   static const defaultCellCount = 4;
 
-  static List<CellData> createDefaultCells() => List.generate(
-        defaultCellCount,
-        (index) => CellData(id: newId(), order: index, name: 'Cell ${index + 1}'),
-      );
+  static List<CellData> createDefaultCells() =>
+      List.generate(defaultCellCount, (index) => CellData(id: newId(), order: index, name: 'Cell ${index + 1}'));
 
   Map<String, Object?> toJson() => {
-        'schemaVersion': 1,
-        'metadata': metadata.toJson(),
-        'settings': settings.toJson(),
-        'cells': cells.map((cell) => cell.toJson()).toList(),
-      };
+    'schemaVersion': 1,
+    'metadata': metadata.toJson(),
+    'settings': settings.toJson(),
+    'cells': cells.map((cell) => cell.toJson()).toList(),
+  };
 
   static ProjectData fromJson(Object? json, {required String fallbackId}) {
     final map = JsonRead.map(json) ?? const <String, Object?>{};
     final rawCells = JsonRead.list(JsonRead.value(map, 'cells')) ?? const [];
     final cells = <CellData>[
-      for (var index = 0; index < rawCells.length; index++)
-        CellData.fromJson(rawCells[index], fallbackOrder: index),
+      for (var index = 0; index < rawCells.length; index++) CellData.fromJson(rawCells[index], fallbackOrder: index),
     ]..sort((a, b) => a.order.compareTo(b.order));
 
     return ProjectData(

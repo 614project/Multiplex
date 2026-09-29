@@ -25,8 +25,7 @@ abstract final class FileIo {
     }
   }
 
-  static Future<void> writeStringAtomic(String path, String text) =>
-      writeBytesAtomic(path, utf8.encode(text));
+  static Future<void> writeStringAtomic(String path, String text) => writeBytesAtomic(path, utf8.encode(text));
 
   static Future<Object?> readJson(String path) async {
     final text = await File(path).readAsString();
@@ -58,8 +57,7 @@ abstract final class FileIo {
     var candidate = '$baseName$extension';
     var suffix = 1;
     bool taken(String name) =>
-        (reserved?.contains(name.toLowerCase()) ?? false) ||
-        File('$folder${Platform.pathSeparator}$name').existsSync();
+        (reserved?.contains(name.toLowerCase()) ?? false) || File('$folder${Platform.pathSeparator}$name').existsSync();
     while (taken(candidate)) {
       candidate = '${baseName}_$suffix$extension';
       suffix++;

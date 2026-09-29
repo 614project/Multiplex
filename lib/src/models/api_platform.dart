@@ -13,9 +13,7 @@ enum ApiPlatform {
   bool get isComfyUi => this == ApiPlatform.comfyUi;
 
   static ApiPlatform parse(String? value) {
-    return value != null && value.trim().toLowerCase() == 'comfyui'
-        ? ApiPlatform.comfyUi
-        : ApiPlatform.webUi;
+    return value != null && value.trim().toLowerCase() == 'comfyui' ? ApiPlatform.comfyUi : ApiPlatform.webUi;
   }
 }
 
@@ -27,8 +25,7 @@ abstract final class GenerationModes {
 
   static const all = <String>[standard, pollingProxySafe, agentScheduler];
 
-  static List<String> optionsFor(ApiPlatform platform) =>
-      platform.isComfyUi ? const [standard] : all;
+  static List<String> optionsFor(ApiPlatform platform) => platform.isComfyUi ? const [standard] : all;
 
   static String normalizeForPlatform(ApiPlatform platform, String? mode) {
     if (platform.isComfyUi) {
@@ -39,12 +36,10 @@ abstract final class GenerationModes {
   }
 
   static String describe(String mode) => switch (mode) {
-        pollingProxySafe =>
-          'Polls progress while waiting and recovers the final preview if a proxy drops the response.',
-        agentScheduler =>
-          'Queues work through the Agent Scheduler extension and collects results as they finish.',
-        _ => 'Sends txt2img directly and waits for the image.',
-      };
+    pollingProxySafe => 'Polls progress while waiting and recovers the final preview if a proxy drops the response.',
+    agentScheduler => 'Queues work through the Agent Scheduler extension and collects results as they finish.',
+    _ => 'Sends txt2img directly and waits for the image.',
+  };
 }
 
 abstract final class ComfyLoraLoaderTypes {
@@ -54,8 +49,6 @@ abstract final class ComfyLoraLoaderTypes {
   static const all = <String>[loraLoader, loraLoaderModelOnly];
 
   static String normalize(String? value) {
-    return value != null && value.toLowerCase() == loraLoaderModelOnly.toLowerCase()
-        ? loraLoaderModelOnly
-        : loraLoader;
+    return value != null && value.toLowerCase() == loraLoaderModelOnly.toLowerCase() ? loraLoaderModelOnly : loraLoader;
   }
 }

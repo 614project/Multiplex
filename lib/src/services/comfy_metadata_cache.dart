@@ -86,10 +86,7 @@ class ComfyMetadataCache {
   bool isLoading(String? baseUrl) => _inFlight.containsKey(normalize(baseUrl));
 
   /// Loads the metadata unless a fresh entry exists; concurrent callers share one request.
-  Future<ComfyObjectInfoMetadata?> ensureCached(
-    String? baseUrl,
-    Future<ComfyObjectInfoMetadata?> Function() loader,
-  ) {
+  Future<ComfyObjectInfoMetadata?> ensureCached(String? baseUrl, Future<ComfyObjectInfoMetadata?> Function() loader) {
     final key = normalize(baseUrl);
     if (key.isEmpty) {
       return Future.value();
@@ -143,9 +140,10 @@ class ComfyMetadataCache {
         },
     ];
     final json = jsonEncode(snapshot);
-    _persistChain = _persistChain
-        .then((_) => FileIo.writeStringAtomic(filePath, json))
-        .catchError((Object error, StackTrace stackTrace) {
+    _persistChain = _persistChain.then((_) => FileIo.writeStringAtomic(filePath, json)).catchError((
+      Object error,
+      StackTrace stackTrace,
+    ) {
       AppLog.write('Saving ComfyUI metadata cache', error, stackTrace);
     });
   }

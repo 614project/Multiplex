@@ -19,10 +19,7 @@ abstract final class PngMetadataReader {
   );
 
   static Future<GeneratedImageMetadata> readFile(String filePath) async {
-    final metadata = GeneratedImageMetadata(
-      filePath: filePath,
-      generatedAt: ImageTimestamps.resolve(filePath),
-    );
+    final metadata = GeneratedImageMetadata(filePath: filePath, generatedAt: ImageTimestamps.resolve(filePath));
 
     final file = File(filePath);
     if (!await file.exists()) {
@@ -54,8 +51,7 @@ abstract final class PngMetadataReader {
       }
 
       if (_lookup(textChunks, 'workflow') != null) {
-        metadata.parseStatusMessage =
-            'ComfyUI workflow metadata exists, but the prompt graph chunk could not be read.';
+        metadata.parseStatusMessage = 'ComfyUI workflow metadata exists, but the prompt graph chunk could not be read.';
         return metadata;
       }
 
@@ -63,7 +59,7 @@ abstract final class PngMetadataReader {
         metadata.parseStatusMessage = textChunks.isEmpty
             ? 'No PNG text metadata was found in this image.'
             : 'Supported generation metadata keys were not found. Available PNG text keys: '
-                '${textChunks.keys.take(6).join(', ')}';
+                  '${textChunks.keys.take(6).join(', ')}';
       }
 
       return metadata;
@@ -234,9 +230,7 @@ abstract final class PngMetadataReader {
     }
 
     final hiresScheduler = parameter('Hires schedule type');
-    if (hiresScheduler != null &&
-        hiresScheduler.isNotEmpty &&
-        !hiresScheduler.toLowerCase().startsWith('use same')) {
+    if (hiresScheduler != null && hiresScheduler.isNotEmpty && !hiresScheduler.toLowerCase().startsWith('use same')) {
       metadata.enableHiresFix = true;
       metadata.scheduler = hiresScheduler;
     }
@@ -267,7 +261,10 @@ abstract final class PngMetadataReader {
     }
 
     final loraNames = <String>{};
-    for (final match in RegExp(r'<lora:([^:>]+)(?::[^>]*)?>', caseSensitive: false).allMatches(metadata.positivePrompt)) {
+    for (final match in RegExp(
+      r'<lora:([^:>]+)(?::[^>]*)?>',
+      caseSensitive: false,
+    ).allMatches(metadata.positivePrompt)) {
       loraNames.add(match.group(1)!.trim());
     }
 
@@ -392,13 +389,15 @@ abstract final class PngMetadataReader {
 
     metadata.enableHiresFix = isHiresFix;
     metadata.loras = loras.toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
-    metadata.metadataParsed = metadata.positivePrompt.isNotEmpty ||
+    metadata.metadataParsed =
+        metadata.positivePrompt.isNotEmpty ||
         metadata.negativePrompt.isNotEmpty ||
         metadata.steps != null ||
         metadata.seed != null;
     metadata.metadataSource = 'ComfyUI prompt graph';
-    metadata.parseStatusMessage =
-        metadata.metadataParsed ? '' : "The ComfyUI prompt graph could not be matched to this app's txt2img workflow.";
+    metadata.parseStatusMessage = metadata.metadataParsed
+        ? ''
+        : "The ComfyUI prompt graph could not be matched to this app's txt2img workflow.";
     return metadata.metadataParsed;
   }
 

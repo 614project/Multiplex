@@ -40,7 +40,7 @@ dependencies:
   url_launcher: ^6.3.2
   image: ^4.10.1
   archive: ^4.3.0
-  dynamic_color: ^2.1.0
+  dynamic_color: ^1.9.0
   gal: ^2.3.3
 
 dev_dependencies:

@@ -80,9 +80,7 @@ class ProjectSettings {
     platform = ApiPlatform.parse(platform.label);
     apiBaseUrl = apiBaseUrl.trim();
     timeoutSeconds = timeoutSeconds < 0 ? 0 : timeoutSeconds;
-    generationMode = generationMode.isEmpty
-        ? ''
-        : GenerationModes.normalizeForPlatform(platform, generationMode);
+    generationMode = generationMode.isEmpty ? '' : GenerationModes.normalizeForPlatform(platform, generationMode);
     if (platform.isComfyUi) {
       generationMode = GenerationModes.standard;
     }
@@ -103,35 +101,35 @@ class ProjectSettings {
   }
 
   Map<String, Object?> toJson() => {
-        'apiBaseUrl': apiBaseUrl,
-        'platform': platform.label,
-        'timeoutSeconds': timeoutSeconds,
-        'generationMode': generationMode,
-        'clipSkip': clipSkip,
-        'commonPrompt': commonPrompt,
-        'negativePrompt': negativePrompt,
-        'overrideGlobalCommonPrompt': overrideGlobalCommonPrompt,
-        'globalCommonPromptOverride': globalCommonPromptOverride,
-        'overrideGlobalNegativePrompt': overrideGlobalNegativePrompt,
-        'globalNegativePromptOverride': globalNegativePromptOverride,
-        'steps': steps,
-        'cfgScale': cfgScale,
-        'width': width,
-        'height': height,
-        'samplerName': samplerName,
-        'scheduler': scheduler,
-        'checkpointModel': checkpointModel,
-        'selectedLoras': selectedLoras.map((lora) => lora.toJson()).toList(),
-        'comfyLoraLoaderType': comfyLoraLoaderType,
-        'seed': seed,
-        'enableHiresFix': enableHiresFix,
-        'hiresScale': hiresScale,
-        'hiresUpscaler': hiresUpscaler,
-        'hiresSteps': hiresSteps,
-        'hiresDenoisingStrength': hiresDenoisingStrength,
-        'hiresResizeWidth': hiresResizeWidth,
-        'hiresResizeHeight': hiresResizeHeight,
-      };
+    'apiBaseUrl': apiBaseUrl,
+    'platform': platform.label,
+    'timeoutSeconds': timeoutSeconds,
+    'generationMode': generationMode,
+    'clipSkip': clipSkip,
+    'commonPrompt': commonPrompt,
+    'negativePrompt': negativePrompt,
+    'overrideGlobalCommonPrompt': overrideGlobalCommonPrompt,
+    'globalCommonPromptOverride': globalCommonPromptOverride,
+    'overrideGlobalNegativePrompt': overrideGlobalNegativePrompt,
+    'globalNegativePromptOverride': globalNegativePromptOverride,
+    'steps': steps,
+    'cfgScale': cfgScale,
+    'width': width,
+    'height': height,
+    'samplerName': samplerName,
+    'scheduler': scheduler,
+    'checkpointModel': checkpointModel,
+    'selectedLoras': selectedLoras.map((lora) => lora.toJson()).toList(),
+    'comfyLoraLoaderType': comfyLoraLoaderType,
+    'seed': seed,
+    'enableHiresFix': enableHiresFix,
+    'hiresScale': hiresScale,
+    'hiresUpscaler': hiresUpscaler,
+    'hiresSteps': hiresSteps,
+    'hiresDenoisingStrength': hiresDenoisingStrength,
+    'hiresResizeWidth': hiresResizeWidth,
+    'hiresResizeHeight': hiresResizeHeight,
+  };
 
   /// Reads Multiplex project files as well as the `Settings` object of WebuiMultiflex exports.
   factory ProjectSettings.fromJson(Object? json) {
@@ -175,9 +173,7 @@ class ProjectSettings {
     return settings;
   }
 
-  static String _nonEmpty(String? value, String fallback) =>
-      value == null || value.trim().isEmpty ? fallback : value;
+  static String _nonEmpty(String? value, String fallback) => value == null || value.trim().isEmpty ? fallback : value;
 
-  static double _finite(double value, double fallback) =>
-      value.isNaN || value.isInfinite ? fallback : value;
+  static double _finite(double value, double fallback) => value.isNaN || value.isInfinite ? fallback : value;
 }

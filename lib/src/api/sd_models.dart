@@ -152,11 +152,7 @@ class InternalProgressRequest {
   final int livePreviewId;
   final bool livePreview;
 
-  Map<String, Object?> toJson() => {
-        'id_task': ?taskId,
-        'id_live_preview': livePreviewId,
-        'live_preview': livePreview,
-      };
+  Map<String, Object?> toJson() => {'id_task': ?taskId, 'id_live_preview': livePreviewId, 'live_preview': livePreview};
 }
 
 class InternalProgressResponse {
@@ -225,14 +221,14 @@ class ComfyObjectInfoMetadata {
   final bool supportsClipSetLastLayer;
 
   Map<String, Object?> toJson() => {
-        'checkpointNames': checkpointNames,
-        'samplerNames': samplerNames,
-        'schedulerNames': schedulerNames,
-        'latentUpscaleMethods': latentUpscaleMethods,
-        'loraNames': loraNames,
-        'availableLoraLoaderTypes': availableLoraLoaderTypes,
-        'supportsClipSetLastLayer': supportsClipSetLastLayer,
-      };
+    'checkpointNames': checkpointNames,
+    'samplerNames': samplerNames,
+    'schedulerNames': schedulerNames,
+    'latentUpscaleMethods': latentUpscaleMethods,
+    'loraNames': loraNames,
+    'availableLoraLoaderTypes': availableLoraLoaderTypes,
+    'supportsClipSetLastLayer': supportsClipSetLastLayer,
+  };
 
   static ComfyObjectInfoMetadata? fromJson(Object? json) {
     final map = JsonRead.map(json);

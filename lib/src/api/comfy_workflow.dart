@@ -63,10 +63,7 @@ abstract final class ComfyWorkflow {
 
     if (supportsClipSetLastLayer && request.clipSkip > 1) {
       final clipSkipId = nextId();
-      prompt[clipSkipId] = _node('CLIPSetLastLayer', {
-        'clip': clipLink,
-        'stop_at_clip_layer': -request.clipSkip.abs(),
-      });
+      prompt[clipSkipId] = _node('CLIPSetLastLayer', {'clip': clipLink, 'stop_at_clip_layer': -request.clipSkip.abs()});
       clipLink = _link(clipSkipId, 0);
     }
 
@@ -116,14 +113,8 @@ abstract final class ComfyWorkflow {
 
     final decodeId = nextId();
     final saveId = nextId();
-    prompt[decodeId] = _node('VAEDecode', {
-      'samples': _link(finalSamplerId, 0),
-      'vae': _link(checkpointId, 2),
-    });
-    prompt[saveId] = _node('SaveImage', {
-      'filename_prefix': filenamePrefix,
-      'images': _link(decodeId, 0),
-    });
+    prompt[decodeId] = _node('VAEDecode', {'samples': _link(finalSamplerId, 0), 'vae': _link(checkpointId, 2)});
+    prompt[saveId] = _node('SaveImage', {'filename_prefix': filenamePrefix, 'images': _link(decodeId, 0)});
 
     return prompt;
   }
@@ -241,8 +232,10 @@ abstract final class ComfyWorkflow {
     return 'bislerp';
   }
 
-  static Map<String, Object?> _node(String classType, Map<String, Object?> inputs) =>
-      {'class_type': classType, 'inputs': inputs};
+  static Map<String, Object?> _node(String classType, Map<String, Object?> inputs) => {
+    'class_type': classType,
+    'inputs': inputs,
+  };
 
   static List<Object> _link(String nodeId, int outputIndex) => [nodeId, outputIndex];
 }

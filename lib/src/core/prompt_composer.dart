@@ -6,8 +6,7 @@
 abstract final class PromptComposer {
   static const cellPromptPlaceholder = '<CELL_PROMPT>';
 
-  static final RegExp _placeholderPattern =
-      RegExp(RegExp.escape(cellPromptPlaceholder), caseSensitive: false);
+  static final RegExp _placeholderPattern = RegExp(RegExp.escape(cellPromptPlaceholder), caseSensitive: false);
 
   static String composePositivePrompt(String? globalPrompt, String? projectPrompt, String? cellPrompt) {
     final normalizedProjectPrompt = _normalizeSegment(projectPrompt);
@@ -15,10 +14,7 @@ abstract final class PromptComposer {
 
     if (_placeholderPattern.hasMatch(normalizedProjectPrompt)) {
       // A replacement callback keeps characters such as '$' (used by Dynamic Prompts) literal.
-      final replaced = normalizedProjectPrompt.replaceAllMapped(
-        _placeholderPattern,
-        (_) => normalizedCellPrompt,
-      );
+      final replaced = normalizedProjectPrompt.replaceAllMapped(_placeholderPattern, (_) => normalizedCellPrompt);
       return mergePromptSegments([globalPrompt, replaced]);
     }
 
@@ -65,6 +61,5 @@ abstract final class PromptComposer {
     return normalizedLeft + normalizedRight;
   }
 
-  static String _normalizeSegment(String? segment) =>
-      segment == null || segment.trim().isEmpty ? '' : segment.trim();
+  static String _normalizeSegment(String? segment) => segment == null || segment.trim().isEmpty ? '' : segment.trim();
 }

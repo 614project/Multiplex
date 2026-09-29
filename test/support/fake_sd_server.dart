@@ -160,7 +160,10 @@ class FakeSdServer {
                 'status_str': 'error',
                 'completed': false,
                 'messages': [
-                  ['execution_interrupted', {'prompt_id': id}],
+                  [
+                    'execution_interrupted',
+                    {'prompt_id': id},
+                  ],
                 ],
               },
             },
@@ -264,7 +267,9 @@ class FakeSdServer {
     final taskId = request['id_task'] as String?;
     final task = _activeWebUiTask?.taskId == taskId
         ? _activeWebUiTask
-        : _agentTasks.values.where((candidate) => candidate.request['force_task_id'] == taskId || candidate.id == taskId).firstOrNull;
+        : _agentTasks.values
+              .where((candidate) => candidate.request['force_task_id'] == taskId || candidate.id == taskId)
+              .firstOrNull;
     if (task == null) {
       return _json({'active': false, 'queued': false, 'completed': false, 'progress': null, 'eta': null});
     }
@@ -341,48 +346,51 @@ class FakeSdServer {
   }
 
   Map<String, Object?> _objectInfo() => {
-        'CheckpointLoaderSimple': {
-          'input': {
-            'required': {
-              'ckpt_name': [checkpoints, {}],
-            },
-          },
+    'CheckpointLoaderSimple': {
+      'input': {
+        'required': {
+          'ckpt_name': [checkpoints, {}],
         },
-        'KSampler': {
-          'input': {
-            'required': {
-              'sampler_name': [
-                ['euler', 'euler_ancestral', 'dpmpp_2m'],
-                {},
-              ],
-              'scheduler': [
-                ['normal', 'karras', 'simple'],
-                {},
-              ],
-            },
-          },
+      },
+    },
+    'KSampler': {
+      'input': {
+        'required': {
+          'sampler_name': [
+            ['euler', 'euler_ancestral', 'dpmpp_2m'],
+            {},
+          ],
+          'scheduler': [
+            ['normal', 'karras', 'simple'],
+            {},
+          ],
         },
-        'LatentUpscaleBy': {
-          'input': {
-            'required': {
-              'upscale_method': [
-                ['nearest-exact', 'bislerp'],
-                {},
-              ],
-            },
-          },
+      },
+    },
+    'LatentUpscaleBy': {
+      'input': {
+        'required': {
+          'upscale_method': [
+            ['nearest-exact', 'bislerp'],
+            {},
+          ],
         },
-        'LoraLoader': {
-          'input': {
-            'required': {
-              'lora_name': ['COMBO', {'options': loras.map((name) => '$name.safetensors').toList()}],
-            },
-          },
+      },
+    },
+    'LoraLoader': {
+      'input': {
+        'required': {
+          'lora_name': [
+            'COMBO',
+            {'options': loras.map((name) => '$name.safetensors').toList()},
+          ],
         },
-        'CLIPSetLastLayer': {
-          'input': {'required': {}},
-        },
-      };
+      },
+    },
+    'CLIPSetLastLayer': {
+      'input': {'required': {}},
+    },
+  };
 
   // --- Rendering -----------------------------------------------------------------------------------
 
@@ -418,10 +426,12 @@ class FakeSdServer {
       parameters.write('\nNegative prompt: $negative');
     }
 
-    parameters.write('\nSteps: ${request['steps']}, Sampler: ${request['sampler_name'] ?? 'Euler a'}, '
-        'Schedule type: ${request['scheduler'] ?? 'Automatic'}, CFG scale: ${request['cfg_scale']}, '
-        'Seed: ${seed < 0 ? Random(prompt.hashCode).nextInt(1 << 31) : seed}, Size: ${width}x$height, '
-        'Model: $model, Clip skip: ${overrides?['CLIP_stop_at_last_layers'] ?? 1}');
+    parameters.write(
+      '\nSteps: ${request['steps']}, Sampler: ${request['sampler_name'] ?? 'Euler a'}, '
+      'Schedule type: ${request['scheduler'] ?? 'Automatic'}, CFG scale: ${request['cfg_scale']}, '
+      'Seed: ${seed < 0 ? Random(prompt.hashCode).nextInt(1 << 31) : seed}, Size: ${width}x$height, '
+      'Model: $model, Clip skip: ${overrides?['CLIP_stop_at_last_layers'] ?? 1}',
+    );
     return _render(prompt, {'parameters': parameters.toString()}, width, height);
   }
 

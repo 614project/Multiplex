@@ -31,10 +31,7 @@ class GeneratedImageMetadata {
     }
 
     final finalText = '$width × $height';
-    if (enableHiresFix == true &&
-        baseWidth > 0 &&
-        baseHeight > 0 &&
-        (baseWidth != width || baseHeight != height)) {
+    if (enableHiresFix == true && baseWidth > 0 && baseHeight > 0 && (baseWidth != width || baseHeight != height)) {
       return '$finalText (Hires.fix from $baseWidth × $baseHeight)';
     }
 
@@ -48,16 +45,8 @@ enum CollectImageFormat {
     'Keeps the original PNG metadata when possible. Best for retaining WebUI or ComfyUI generation info.',
     '.png',
   ),
-  pngWithoutMetadata(
-    'PNG (Lightweight)',
-    'Re-encodes PNG without metadata for a smaller, cleaner file.',
-    '.png',
-  ),
-  jpeg(
-    'JPEG',
-    'Creates a lighter JPEG copy without metadata.',
-    '.jpg',
-  );
+  pngWithoutMetadata('PNG (Lightweight)', 'Re-encodes PNG without metadata for a smaller, cleaner file.', '.png'),
+  jpeg('JPEG', 'Creates a lighter JPEG copy without metadata.', '.jpg');
 
   const CollectImageFormat(this.title, this.description, this.extension);
 

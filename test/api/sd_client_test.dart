@@ -39,7 +39,9 @@ void main() {
 
     test('reads V3 combo with a single option', () {
       expect(
-        SdClient.extractComfyComboValues(jsonDecode('["COMBO", {"options": ["only.safetensors"], "tooltip": "model"}]')),
+        SdClient.extractComfyComboValues(
+          jsonDecode('["COMBO", {"options": ["only.safetensors"], "tooltip": "model"}]'),
+        ),
         ['only.safetensors'],
       );
     });
@@ -50,7 +52,8 @@ void main() {
     });
 
     test('builds metadata from object_info', () {
-      final parsed = SdClient.parseObjectInfo(jsonDecode('''
+      final parsed = SdClient.parseObjectInfo(
+        jsonDecode('''
         {
           "CheckpointLoaderSimple": { "input": { "required": { "ckpt_name": ["COMBO", { "options": ["only.safetensors"] }] } } },
           "KSampler": { "input": { "required": {
@@ -60,7 +63,8 @@ void main() {
           "LoraLoader": { "input": { "required": { "lora_name": ["COMBO", { "options": ["style.safetensors"] }] } } },
           "CLIPSetLastLayer": { "input": { "required": {} } }
         }
-      '''));
+      '''),
+      );
       expect(parsed.checkpointNames, ['only.safetensors']);
       expect(parsed.samplerNames, ['euler', 'euler_ancestral']);
       expect(parsed.schedulerNames, ['normal', 'karras']);
@@ -71,7 +75,8 @@ void main() {
     });
 
     test('describes a rejected workflow', () {
-      final message = SdClient.buildComfyPromptErrorMessage(jsonDecode('''
+      final message = SdClient.buildComfyPromptErrorMessage(
+        jsonDecode('''
         {
           "error": { "type": "prompt_outputs_failed_validation", "message": "Prompt outputs failed validation", "details": "", "extra_info": {} },
           "node_errors": {
@@ -81,7 +86,8 @@ void main() {
             }
           }
         }
-      '''));
+      '''),
+      );
       expect(message, contains('Prompt outputs failed validation'));
       expect(
         message,
@@ -90,8 +96,10 @@ void main() {
     });
 
     test('accepted workflow has no error message', () {
-      expect(SdClient.buildComfyPromptErrorMessage(jsonDecode('{ "prompt_id": "abc", "number": 3, "node_errors": {} }')),
-          isNull);
+      expect(
+        SdClient.buildComfyPromptErrorMessage(jsonDecode('{ "prompt_id": "abc", "number": 3, "node_errors": {} }')),
+        isNull,
+      );
     });
 
     test('reads the execution error from history messages', () {
@@ -112,37 +120,56 @@ void main() {
     });
 
     test('successful history has no error', () {
-      final record = jsonDecode('{ "status": { "status_str": "success", "completed": true, "messages": [] } }')
-          as Map<String, Object?>;
+      final record = jsonDecode(
+        '{ "status": { "status_str": "success", "completed": true, "messages": [] } }',
+      ) as Map<String, Object?>;
       expect(SdClient.tryGetComfyPromptError(record), isNull);
     });
 
     test('detects finished history records', () {
       Map<String, Object?> parse(String json) => jsonDecode(json) as Map<String, Object?>;
-      expect(SdClient.isComfyHistoryRecordFinished(parse('{ "outputs": {}, "status": { "status_str": "success", "completed": true } }')), isTrue);
+      expect(
+        SdClient.isComfyHistoryRecordFinished(
+          parse('{ "outputs": {}, "status": { "status_str": "success", "completed": true } }'),
+        ),
+        isTrue,
+      );
       expect(SdClient.isComfyHistoryRecordFinished(parse('{ "outputs": {} }')), isTrue);
-      expect(SdClient.isComfyHistoryRecordFinished(parse('{ "outputs": {}, "status": { "status_str": "running", "completed": false } }')), isFalse);
+      expect(
+        SdClient.isComfyHistoryRecordFinished(
+          parse('{ "outputs": {}, "status": { "status_str": "running", "completed": false } }'),
+        ),
+        isFalse,
+      );
     });
 
     test('finds only our running prompt', () {
-      final queue = jsonDecode('{ "queue_running": [[7, "ours", {}, {}, []]], "queue_pending": [[8, "later", {}, {}, []]] }');
+      final queue = jsonDecode(
+        '{ "queue_running": [[7, "ours", {}, {}, []]], "queue_pending": [[8, "later", {}, {}, []]] }',
+      );
       expect(SdClient.findRunningComfyPromptId(queue, ['later', 'ours']), 'ours');
       expect(SdClient.findRunningComfyPromptId(queue, ['later']), isNull);
     });
 
     test('reads the Agent Scheduler task status', () {
       expect(SdClient.readAgentSchedulerTaskStatus(jsonDecode('{ "id": "t", "status": "pending" }')), 'pending');
-      expect(SdClient.readAgentSchedulerTaskStatus(jsonDecode('{ "success": true, "data": { "id": "t", "status": "running" } }')),
-          'running');
+      expect(
+        SdClient.readAgentSchedulerTaskStatus(
+          jsonDecode('{ "success": true, "data": { "id": "t", "status": "running" } }'),
+        ),
+        'running',
+      );
       expect(SdClient.readAgentSchedulerTaskStatus(jsonDecode('{ "id": "t" }')), isNull);
     });
   });
 
   group('SdClient', () {
     test('cancelling ComfyUI prompts deletes queued ones and interrupts only our running prompt', () async {
-      final recorder = RecordingClient((request) => request.method == 'GET' && request.uri.path == '/queue'
-          ? RecordingClient.json('{ "queue_running": [[1, "ours-running", {}, {}, []]], "queue_pending": [] }')
-          : RecordingClient.json('{}'));
+      final recorder = RecordingClient(
+        (request) => request.method == 'GET' && request.uri.path == '/queue'
+            ? RecordingClient.json('{ "queue_running": [[1, "ours-running", {}, {}, []]], "queue_pending": [] }')
+            : RecordingClient.json('{}'),
+      );
       final client = SdClient(httpClient: recorder.client);
 
       await client.cancelComfyPrompts(comfyUrl, ['ours-running', 'ours-pending'], none);
@@ -153,15 +180,19 @@ void main() {
     });
 
     test('cancelling ComfyUI prompts does not interrupt someone else\'s prompt', () async {
-      final recorder = RecordingClient((request) => request.method == 'GET'
-          ? RecordingClient.json('{ "queue_running": [[1, "other-client", {}, {}, []]], "queue_pending": [] }')
-          : RecordingClient.json('{}'));
+      final recorder = RecordingClient(
+        (request) => request.method == 'GET'
+            ? RecordingClient.json('{ "queue_running": [[1, "other-client", {}, {}, []]], "queue_pending": [] }')
+            : RecordingClient.json('{}'),
+      );
       await SdClient(httpClient: recorder.client).cancelComfyPrompts(comfyUrl, ['ours'], none);
       expect(recorder.requests.map((request) => request.summary), isNot(contains('POST /interrupt')));
     });
 
     test('queueing with known metadata does not fetch object_info', () async {
-      final recorder = RecordingClient((_) => RecordingClient.json('{ "prompt_id": "server-id", "number": 1, "node_errors": {} }'));
+      final recorder = RecordingClient(
+        (_) => RecordingClient.json('{ "prompt_id": "server-id", "number": 1, "node_errors": {} }'),
+      );
       final promptId = await SdClient(httpClient: recorder.client)
           .queueComfyTxt2Img(comfyUrl, createRequest(), metadata, none, clientId: 'client');
 
@@ -171,38 +202,49 @@ void main() {
     });
 
     test('a rejected workflow reports the failing node', () async {
-      final recorder = RecordingClient((_) => RecordingClient.json(
-            '{ "error": { "message": "Prompt outputs failed validation", "details": "" }, "node_errors": { "3": { "class_type": "KSampler", "errors": [ { "message": "Value not in list", "details": "sampler_name: \'nope\'" } ] } } }',
-            400,
-          ));
+      final recorder = RecordingClient(
+        (_) => RecordingClient.json(
+          '{ "error": { "message": "Prompt outputs failed validation", "details": "" }, "node_errors": { "3": { "class_type": "KSampler", "errors": [ { "message": "Value not in list", "details": "sampler_name: \'nope\'" } ] } } }',
+          400,
+        ),
+      );
       await expectLater(
-        SdClient(httpClient: recorder.client).queueComfyTxt2Img(comfyUrl, createRequest(), metadata, none, clientId: 'c'),
-        throwsA(isA<ApiException>().having(
-          (error) => error.message,
-          'message',
-          contains("KSampler (node 3): Value not in list (sampler_name: 'nope')"),
-        )),
+        SdClient(httpClient: recorder.client)
+            .queueComfyTxt2Img(comfyUrl, createRequest(), metadata, none, clientId: 'c'),
+        throwsA(
+          isA<ApiException>().having(
+            (error) => error.message,
+            'message',
+            contains("KSampler (node 3): Value not in list (sampler_name: 'nope')"),
+          ),
+        ),
       );
     });
 
     test('a finished prompt without an image fails instead of polling until the timeout', () async {
-      final recorder = RecordingClient((_) => RecordingClient.json(
-            '{ "p1": { "outputs": {}, "status": { "status_str": "success", "completed": true, "messages": [] } } }',
-          ));
+      final recorder = RecordingClient(
+        (_) => RecordingClient.json(
+          '{ "p1": { "outputs": {}, "status": { "status_str": "success", "completed": true, "messages": [] } } }',
+        ),
+      );
       await expectLater(
         SdClient(httpClient: recorder.client).waitForComfyImage(comfyUrl, 'p1', none),
-        throwsA(isA<ApiException>().having((error) => error.message, 'message', contains('without producing an image'))),
+        throwsA(
+          isA<ApiException>().having((error) => error.message, 'message', contains('without producing an image')),
+        ),
       );
       expect(recorder.requests, hasLength(1));
     });
 
     test('downloads the image of a finished prompt', () async {
       final imageBytes = [0x89, 0x50, 0x4E, 0x47, 1, 2, 3];
-      final recorder = RecordingClient((request) => request.uri.path == '/view'
-          ? http.Response.bytes(imageBytes, 200)
-          : RecordingClient.json(
-              '{ "p1": { "outputs": { "9": { "images": [ { "filename": "out.png", "subfolder": "", "type": "output" } ] } }, "status": { "status_str": "success", "completed": true } } }',
-            ));
+      final recorder = RecordingClient(
+        (request) => request.uri.path == '/view'
+            ? http.Response.bytes(imageBytes, 200)
+            : RecordingClient.json(
+                '{ "p1": { "outputs": { "9": { "images": [ { "filename": "out.png", "subfolder": "", "type": "output" } ] } }, "status": { "status_str": "success", "completed": true } } }',
+              ),
+      );
       final bytes = await SdClient(httpClient: recorder.client).waitForComfyImage(comfyUrl, 'p1', none);
       expect(bytes, imageBytes);
       expect(recorder.requests.last.summary, 'GET /view?filename=out.png&type=output');
@@ -215,28 +257,36 @@ void main() {
     });
 
     test('pending Agent Scheduler tasks are deleted', () async {
-      final recorder = RecordingClient((request) => request.method == 'GET'
-          ? RecordingClient.json('{ "id": "t1", "status": "pending" }')
-          : RecordingClient.json('{ "success": true }'));
+      final recorder = RecordingClient(
+        (request) => request.method == 'GET'
+            ? RecordingClient.json('{ "id": "t1", "status": "pending" }')
+            : RecordingClient.json('{ "success": true }'),
+      );
       await SdClient(httpClient: recorder.client).cancelAgentSchedulerTask(webUiUrl, 't1', none);
-      expect(recorder.requests.map((request) => request.summary),
-          ['GET /agent-scheduler/v1/task/t1', 'POST /agent-scheduler/v1/task/t1/delete']);
+      expect(recorder.requests.map((request) => request.summary), [
+        'GET /agent-scheduler/v1/task/t1',
+        'POST /agent-scheduler/v1/task/t1/delete',
+      ]);
     });
 
     test('Agent Scheduler delete falls back to the legacy route', () async {
-      final recorder = RecordingClient((request) => switch (request.uri.path) {
-            '/agent-scheduler/v1/task/t1' => RecordingClient.json('{ "status": "running" }'),
-            '/agent-scheduler/v1/task/t1/delete' => RecordingClient.json('{ "detail": "Not Found" }', 404),
-            _ => RecordingClient.json('{ "success": true }'),
-          });
+      final recorder = RecordingClient(
+        (request) => switch (request.uri.path) {
+          '/agent-scheduler/v1/task/t1' => RecordingClient.json('{ "status": "running" }'),
+          '/agent-scheduler/v1/task/t1/delete' => RecordingClient.json('{ "detail": "Not Found" }', 404),
+          _ => RecordingClient.json('{ "success": true }'),
+        },
+      );
       await SdClient(httpClient: recorder.client).cancelAgentSchedulerTask(webUiUrl, 't1', none);
       expect(recorder.requests.last.summary, 'POST /agent-scheduler/v1/delete/t1');
     });
 
     test('Agent Scheduler support is cached per server', () async {
-      final recorder = RecordingClient((_) => RecordingClient.json(
-            '{ "paths": { "/agent-scheduler/v1/queue/txt2img": {}, "/agent-scheduler/v1/results/{id}": {} } }',
-          ));
+      final recorder = RecordingClient(
+        (_) => RecordingClient.json(
+          '{ "paths": { "/agent-scheduler/v1/queue/txt2img": {}, "/agent-scheduler/v1/results/{id}": {} } }',
+        ),
+      );
       final client = SdClient(httpClient: recorder.client);
       expect(await client.trySupportsAgentScheduler(webUiUrl, none), isTrue);
       expect(await client.trySupportsAgentScheduler(webUiUrl, none), isTrue);
@@ -255,9 +305,11 @@ void main() {
       final recorder = RecordingClient((_) => RecordingClient.json('{ "detail": "Not authenticated" }', 401));
       await expectLater(
         SdClient(httpClient: recorder.client).getCheckpointNames(webUiUrl, none),
-        throwsA(isA<HttpStatusException>()
-            .having((error) => error.statusCode, 'statusCode', 401)
-            .having((error) => error.toString(), 'text', contains('Not authenticated'))),
+        throwsA(
+          isA<HttpStatusException>()
+              .having((error) => error.statusCode, 'statusCode', 401)
+              .having((error) => error.toString(), 'text', contains('Not authenticated')),
+        ),
       );
     });
 
@@ -332,8 +384,10 @@ void main() {
     });
 
     test('resolves latent upscale methods from WebUI labels', () {
-      expect(ComfyWorkflow.resolveLatentUpscaleMethod('Latent (nearest-exact)', const ['bislerp', 'nearest-exact']),
-          'nearest-exact');
+      expect(
+        ComfyWorkflow.resolveLatentUpscaleMethod('Latent (nearest-exact)', const ['bislerp', 'nearest-exact']),
+        'nearest-exact',
+      );
       expect(ComfyWorkflow.resolveLatentUpscaleMethod('R-ESRGAN 4x+', const ['area', 'bicubic']), 'bicubic');
       expect(ComfyWorkflow.resolveLatentUpscaleMethod(null, const []), 'bislerp');
     });
