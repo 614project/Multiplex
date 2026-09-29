@@ -454,17 +454,49 @@ class FakeSdServer {
     return _render(text, {'prompt': jsonEncode(graph)}, width, height);
   }
 
-  /// A small gradient derived from the prompt, so different cells produce visibly different images.
+  /// A stylised landscape derived from the prompt (sky gradient, sun and layered hills), so different
+  /// cells produce visibly different images.
   Uint8List _render(String prompt, Map<String, String> textData, int width, int height) {
     final aspect = width / height;
-    final outWidth = aspect >= 1 ? imageSize : (imageSize * aspect).round();
-    final outHeight = aspect >= 1 ? (imageSize / aspect).round() : imageSize;
+    final outWidth = max(aspect >= 1 ? imageSize : (imageSize * aspect).round(), 8);
+    final outHeight = max(aspect >= 1 ? (imageSize / aspect).round() : imageSize, 8);
     final random = Random(prompt.hashCode ^ DateTime.now().microsecondsSinceEpoch);
-    final hue = random.nextDouble() * 360;
-    final image = img.Image(width: max(outWidth, 8), height: max(outHeight, 8));
+    final hue = (prompt.hashCode % 360 + random.nextDouble() * 50) % 360;
+    final sunX = 0.2 + random.nextDouble() * 0.6;
+    final sunY = 0.18 + random.nextDouble() * 0.25;
+    final layers = [
+      for (var layer = 0; layer < 3; layer++)
+        (
+          base: 0.52 + layer * 0.14 + random.nextDouble() * 0.05,
+          amplitude: 0.05 + random.nextDouble() * 0.06,
+          frequency: 2 + random.nextDouble() * 4 + layer * 2,
+          phase: random.nextDouble() * pi * 2,
+        ),
+    ];
+    final image = img.Image(width: outWidth, height: outHeight);
     for (final pixel in image) {
-      final t = (pixel.x / image.width + pixel.y / image.height) / 2;
-      final rgb = _hsvToRgb((hue + t * 90) % 360, 0.55, 0.55 + t * 0.4);
+      final u = pixel.x / outWidth;
+      final v = pixel.y / outHeight;
+      var rgb = _hsvToRgb((hue + v * 40) % 360, 0.35 + v * 0.3, 0.98 - v * 0.25);
+      final dx = (u - sunX) * aspect;
+      final dy = v - sunY;
+      final distance = sqrt(dx * dx + dy * dy);
+      if (distance < 0.08) {
+        rgb = _hsvToRgb((hue + 30) % 360, 0.25, 1.0);
+      } else if (distance < 0.25) {
+        final glow = 1 - (distance - 0.08) / 0.17;
+        final sun = _hsvToRgb((hue + 30) % 360, 0.3, 1.0);
+        rgb = (_mix(rgb.$1, sun.$1, glow * 0.5), _mix(rgb.$2, sun.$2, glow * 0.5), _mix(rgb.$3, sun.$3, glow * 0.5));
+      }
+
+      for (var index = 0; index < layers.length; index++) {
+        final layer = layers[index];
+        final ridge = layer.base + layer.amplitude * sin(u * layer.frequency + layer.phase);
+        if (v > ridge) {
+          rgb = _hsvToRgb((hue + 180 + index * 12) % 360, 0.45 + index * 0.1, 0.62 - index * 0.17 - (v - ridge) * 0.3);
+        }
+      }
+
       pixel
         ..r = rgb.$1
         ..g = rgb.$2
@@ -475,7 +507,10 @@ class FakeSdServer {
     return img.encodePng(image);
   }
 
-  static (int, int, int) _hsvToRgb(double hue, double saturation, double value) {
+  static int _mix(int from, int to, double amount) => (from + (to - from) * amount).round().clamp(0, 255);
+
+  static (int, int, int) _hsvToRgb(double hue, double saturation, double brightness) {
+    final value = brightness.clamp(0.0, 1.0);
     final c = value * saturation;
     final x = c * (1 - ((hue / 60) % 2 - 1).abs());
     final m = value - c;
