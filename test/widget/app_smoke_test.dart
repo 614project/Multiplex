@@ -1,10 +1,14 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:multiplex/src/app.dart';
 import 'package:multiplex/src/state/project_session.dart';
+import 'package:multiplex/src/ui/cell_detail/cell_detail_page.dart';
 import 'package:multiplex/src/ui/desktop/desktop_shell.dart';
 import 'package:multiplex/src/ui/mobile/generation_dock.dart';
 import 'package:multiplex/src/ui/mobile/mobile_shell.dart';
+import 'package:multiplex/src/ui/workspace/cells_board.dart';
 
 import '../support/fake_sd_server.dart';
 import '../support/test_app.dart';
@@ -91,5 +95,62 @@ void main() {
     expect(find.text('Appearance'), findsOneWidget);
     expect(find.text('Generation defaults'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('desktop gallery selects several images with Ctrl+click and the hover check', (tester) async {
+    await pumpApp(tester, const Size(1440, 900));
+    final project = testApp.app.selected!;
+    await tester.runAsync(() async {
+      for (var index = 0; index < 3; index++) {
+        project.regenerate(project.cells.first);
+      }
+
+      await waitFor(() => !project.generation.hasWork);
+    });
+    await tester.pump();
+
+    await tester.tap(find.byType(CellPreview).first);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.byType(CellDetailPage), findsOneWidget);
+
+    // Let the gallery list the image files; file IO completes outside the fake clock.
+    final tiles = find.byWidgetPredicate((widget) => widget.runtimeType.toString() == '_GalleryTile');
+    for (var attempt = 0; attempt < 50 && tiles.evaluate().isEmpty; attempt++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await tester.pump();
+    }
+
+    expect(tiles, findsNWidgets(3));
+    expect(find.text('Versus'), findsOneWidget);
+
+    // Ctrl is released before the tap is recognized, as with a quick click.
+    final gesture = await tester.startGesture(tester.getCenter(tiles.at(0)));
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await gesture.up();
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+    // Only the pointer-down state counts: Ctrl went down after it, so this was a plain click.
+    expect(find.text('Versus'), findsOneWidget);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    final ctrlClick = await tester.startGesture(tester.getCenter(tiles.at(1)));
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await ctrlClick.up();
+    await tester.pump();
+    expect(find.text('Versus (2)'), findsOneWidget);
+
+    // The check button that appears on hover adds a third image without modifier keys.
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: tester.getCenter(tiles.at(2)));
+    addTearDown(mouse.removePointer);
+    await tester.pump();
+    await tester.tap(find.descendant(of: tiles.at(2), matching: find.byTooltip('Add to selection')));
+    await tester.pump();
+    expect(find.text('Versus (3)'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.pageBack();
+    await tester.pump(const Duration(seconds: 1));
   });
 }

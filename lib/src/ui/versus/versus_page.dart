@@ -79,6 +79,7 @@ class _VersusPageState extends State<VersusPage> {
             const SingleActivator(LogicalKeyboardKey.arrowRight): _tournament.chooseRight,
             const SingleActivator(LogicalKeyboardKey.arrowDown): _tournament.chooseRight,
             const SingleActivator(LogicalKeyboardKey.digit2): _tournament.chooseRight,
+            const SingleActivator(LogicalKeyboardKey.escape): () => Navigator.of(context).maybePop(),
           },
           child: Focus(
             autofocus: true,

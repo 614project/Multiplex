@@ -238,7 +238,7 @@ class _StatTile extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(label, style: context.text.labelSmall?.copyWith(color: colors.onSurfaceVariant)),
-                SelectableText(value, style: context.text.bodyMedium, maxLines: 3),
+                SelectableText(value, style: context.text.bodyMedium),
               ],
             ),
           ),

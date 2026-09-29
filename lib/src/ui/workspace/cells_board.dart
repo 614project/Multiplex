@@ -177,6 +177,8 @@ class CellPreview extends StatelessWidget {
                 tag: 'cell-image-${cell.id}',
                 child: FileThumbnail(path: path, fit: fit, decodeWidth: decodeWidth),
               )
+            else if (cell.isBusy)
+              const ImagePlaceholder(icon: null)
             else
               const ImagePlaceholder(icon: Icons.auto_awesome_outlined, label: 'Click to generate'),
             if (cell.isBusy && preview != null)

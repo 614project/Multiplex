@@ -58,7 +58,8 @@ class MemoryPreview extends StatelessWidget {
 class ImagePlaceholder extends StatelessWidget {
   const ImagePlaceholder({super.key, this.icon = Icons.image_outlined, this.label});
 
-  final IconData icon;
+  /// The centered icon, or null for a plain background (e.g. under a progress indicator).
+  final IconData? icon;
   final String? label;
 
   @override
@@ -76,7 +77,7 @@ class ImagePlaceholder extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: colors.onSurfaceVariant.withValues(alpha: 0.6), size: 32),
+            if (icon != null) Icon(icon, color: colors.onSurfaceVariant.withValues(alpha: 0.6), size: 32),
             if (label != null) ...[
               const SizedBox(height: 6),
               Text(label!, style: context.text.labelMedium?.copyWith(color: colors.onSurfaceVariant)),

@@ -355,15 +355,17 @@ class _WorkspaceHeader extends StatelessWidget {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      RepeatStepper(session: session),
-                      const SizedBox(width: 10),
+                      // The stop button and the variable-width Generate label sit on the left so the
+                      // repeat stepper and the menu keep their position while a job starts and stops.
+                      if (generation.isGenerating) ...[InterruptButton(session: session), const SizedBox(width: 8)],
                       FilledButton.icon(
                         style: FilledButton.styleFrom(minimumSize: const Size(0, 44)),
                         onPressed: session.canGenerate ? () => session.generate() : null,
                         icon: const Icon(Icons.auto_awesome),
                         label: Text(generateButtonLabel(session)),
                       ),
-                      if (generation.isGenerating) ...[const SizedBox(width: 8), InterruptButton(session: session)],
+                      const SizedBox(width: 10),
+                      RepeatStepper(session: session),
                       const SizedBox(width: 4),
                       PopupMenuButton<_WorkspaceMenu>(
                         tooltip: 'Project actions',

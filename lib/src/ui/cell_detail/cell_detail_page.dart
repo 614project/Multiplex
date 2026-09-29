@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -341,62 +342,111 @@ class _Preview extends StatelessWidget {
   }
 }
 
-class _GalleryGrid extends StatelessWidget {
+class _GalleryGrid extends StatefulWidget {
   const _GalleryGrid({required this.gallery, required this.actions});
 
   final CellGallery gallery;
   final _GalleryActions actions;
 
   @override
+  State<_GalleryGrid> createState() => _GalleryGridState();
+}
+
+class _GalleryGridState extends State<_GalleryGrid> {
+  // Modifier keys are read when the pointer goes down: by the time a tap is recognized the user
+  // may already have released Ctrl or Shift.
+  bool _toggleModifier = false;
+  bool _rangeModifier = false;
+
+  // Double clicks are detected by hand so single clicks select immediately instead of waiting for
+  // the double-tap timeout.
+  String? _lastTapPath;
+  DateTime _lastTapTime = DateTime.fromMillisecondsSinceEpoch(0);
+
+  void _captureModifiers(PointerDownEvent event) {
+    final keyboard = HardwareKeyboard.instance;
+    _toggleModifier = keyboard.isControlPressed || keyboard.isMetaPressed;
+    _rangeModifier = keyboard.isShiftPressed;
+  }
+
+  void _handleTap(CellImage image) {
+    final now = DateTime.now();
+    final isDoubleClick =
+        !_toggleModifier &&
+        !_rangeModifier &&
+        _lastTapPath == image.path &&
+        now.difference(_lastTapTime) <= kDoubleTapTimeout;
+    _lastTapPath = image.path;
+    _lastTapTime = now;
+    if (isDoubleClick) {
+      _lastTapPath = null;
+      unawaited(PlatformActions.openFile(image.path));
+      return;
+    }
+
+    widget.gallery.select(image, toggle: _toggleModifier, range: _rangeModifier);
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return GridView.builder(
-      padding: const EdgeInsets.all(12),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 160,
-        mainAxisSpacing: 8,
-        crossAxisSpacing: 8,
+    final gallery = widget.gallery;
+    return Listener(
+      onPointerDown: _captureModifiers,
+      child: GridView.builder(
+        padding: const EdgeInsets.all(12),
+        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+          maxCrossAxisExtent: 160,
+          mainAxisSpacing: 8,
+          crossAxisSpacing: 8,
+        ),
+        itemCount: gallery.images.length,
+        itemBuilder: (context, index) {
+          final image = gallery.images[index];
+          return _GalleryTile(
+            gallery: gallery,
+            image: image,
+            onTap: () => _handleTap(image),
+            onToggle: () => gallery.select(image, toggle: true),
+          );
+        },
       ),
-      itemCount: gallery.images.length,
-      itemBuilder: (context, index) {
-        final image = gallery.images[index];
-        return _GalleryTile(
-          gallery: gallery,
-          image: image,
-          onTap: () {
-            final keyboard = HardwareKeyboard.instance;
-            gallery.select(
-              image,
-              toggle: keyboard.isControlPressed || keyboard.isMetaPressed,
-              range: keyboard.isShiftPressed,
-            );
-          },
-          onDoubleTap: () => PlatformActions.openFile(image.path),
-        );
-      },
     );
   }
 }
 
-class _GalleryTile extends StatelessWidget {
-  const _GalleryTile({required this.gallery, required this.image, required this.onTap, this.onDoubleTap});
+/// A gallery thumbnail. On pointer devices a check button appears on hover so several images can
+/// be selected without modifier keys; [onToggle] enables that button.
+class _GalleryTile extends StatefulWidget {
+  const _GalleryTile({required this.gallery, required this.image, required this.onTap, this.onToggle});
 
   final CellGallery gallery;
   final CellImage image;
   final VoidCallback onTap;
-  final VoidCallback? onDoubleTap;
+  final VoidCallback? onToggle;
+
+  @override
+  State<_GalleryTile> createState() => _GalleryTileState();
+}
+
+class _GalleryTileState extends State<_GalleryTile> {
+  bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
+    final gallery = widget.gallery;
+    final image = widget.image;
     final selected = gallery.isSelected(image);
     final isPrimary = gallery.primary?.path == image.path;
+    final showCheck = widget.onToggle != null && (_hovered || gallery.selectedCount > 1);
     return Tooltip(
       message: '${image.fileName}\n${ImageTimestamps.format(image.createdAt)}',
       waitDuration: const Duration(milliseconds: 800),
-      child: GestureDetector(
-        onDoubleTap: onDoubleTap,
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _hovered = true),
+        onExit: (_) => setState(() => _hovered = false),
         child: InkWell(
-          onTap: onTap,
+          onTap: widget.onTap,
           borderRadius: BorderRadius.circular(14),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 140),
@@ -418,7 +468,13 @@ class _GalleryTile extends StatelessWidget {
                       top: 6,
                       child: _Badge(icon: Icons.star, color: colors.tertiary, foreground: colors.onTertiary),
                     ),
-                  if (selected)
+                  if (showCheck)
+                    Positioned(
+                      right: 2,
+                      top: 2,
+                      child: _SelectToggle(selected: selected, onPressed: widget.onToggle!),
+                    )
+                  else if (selected)
                     Positioned(
                       right: 6,
                       top: 6,
@@ -430,6 +486,31 @@ class _GalleryTile extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _SelectToggle extends StatelessWidget {
+  const _SelectToggle({required this.selected, required this.onPressed});
+
+  final bool selected;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return IconButton(
+      tooltip: selected ? 'Deselect' : 'Add to selection',
+      visualDensity: VisualDensity.compact,
+      style: IconButton.styleFrom(
+        backgroundColor: selected ? colors.primary : colors.surface.withValues(alpha: 0.8),
+        foregroundColor: selected ? colors.onPrimary : colors.onSurfaceVariant,
+        minimumSize: const Size.square(28),
+        fixedSize: const Size.square(28),
+        padding: EdgeInsets.zero,
+      ),
+      onPressed: onPressed,
+      icon: Icon(selected ? Icons.check : Icons.circle_outlined, size: 16),
     );
   }
 }
@@ -760,11 +841,7 @@ class _ViewerBottomBar extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
                   _ViewerAction(icon: Icons.info_outline, label: 'Details', onPressed: onDetails),
-                  _ViewerAction(
-                    icon: Icons.download,
-                    label: PlatformInfo.canSaveToGallery ? 'Save' : 'Save',
-                    onPressed: actions.save,
-                  ),
+                  _ViewerAction(icon: Icons.download, label: 'Save', onPressed: actions.save),
                   if (PlatformInfo.canShareFiles)
                     _ViewerAction(icon: Icons.share_outlined, label: 'Share', onPressed: actions.share),
                   _ViewerAction(
