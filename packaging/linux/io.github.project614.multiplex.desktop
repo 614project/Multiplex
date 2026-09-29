@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Multiplex
+GenericName=Stable Diffusion batch generator
+Comment=Batch Stable Diffusion prompt cells across WebUI and ComfyUI
+Exec=multiplex
+Icon=io.github.project614.multiplex
+Terminal=false
+Categories=Graphics;
+Keywords=Stable Diffusion;WebUI;ComfyUI;AI;image;
+StartupWMClass=io.github.project614.multiplex

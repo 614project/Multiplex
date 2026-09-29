@@ -1,0 +1,71 @@
+name: Release
+
+# Builds every platform and publishes a GitHub release with the installers and executables.
+# Start it by pushing a tag (git tag v1.2.0 && git push origin v1.2.0) or from the Actions tab,
+# where the tag is created on the chosen branch. Versions with a suffix (1.2.0-beta.1) become
+# pre-releases.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release, e.g. 1.2.0 (leave empty for the version in pubspec.yaml)
+        type: string
+        required: false
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+    with:
+      version: ${{ github.event_name == 'push' && github.ref_name || inputs.version }}
+      package: true
+    secrets: inherit
+
+  publish:
+    name: Publish release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: multiplex-*
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        working-directory: dist
+        run: |
+          sha256sum -- * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+      - name: Create the release
+        run: |
+          if gh release view "v$VERSION" > /dev/null 2>&1; then
+            echo "::error::Release v$VERSION already exists. Bump the version or delete that release first."
+            exit 1
+          fi
+
+          sed "s/{{VERSION}}/$VERSION/g" .github/release-notes.md > "$RUNNER_TEMP/notes.md"
+          flags=(--title "Multiplex $VERSION" --notes-file "$RUNNER_TEMP/notes.md" --generate-notes)
+          if [[ "$VERSION" == *-* ]]; then
+            flags+=(--prerelease)
+          fi
+          if [[ "$GITHUB_EVENT_NAME" == push ]]; then
+            flags+=(--verify-tag)
+          else
+            flags+=(--target "$GITHUB_SHA")
+          fi
+          gh release create "v$VERSION" dist/* "${flags[@]}"
+          echo "Published [v$VERSION]($(gh release view "v$VERSION" --json url --jq .url))" >> "$GITHUB_STEP_SUMMARY"
