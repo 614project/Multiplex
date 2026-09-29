@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../app_info.dart';
 import '../../models/api_platform.dart';
 import '../../models/app_preferences.dart';
 import '../../services/app_log.dart';
@@ -259,10 +260,18 @@ class AppSettingsPage extends StatelessWidget {
       ),
       Padding(
         padding: const EdgeInsets.symmetric(vertical: 16),
-        child: Text(
-          'Multiplex · a Flutter and Material 3 rewrite of WebuiMultiflex · made by 614project.',
-          textAlign: TextAlign.center,
-          style: context.text.bodySmall?.copyWith(color: context.colors.onSurfaceVariant),
+        child: Column(
+          children: [
+            Image.asset('assets/icon/multiplex.png', width: 48, height: 48),
+            const SizedBox(height: 8),
+            Text('Multiplex $appVersion', style: context.text.titleSmall),
+            const SizedBox(height: 4),
+            Text(
+              'A Flutter and Material 3 rewrite of WebuiMultiflex · made by 614project.',
+              textAlign: TextAlign.center,
+              style: context.text.bodySmall?.copyWith(color: context.colors.onSurfaceVariant),
+            ),
+          ],
         ),
       ),
     ];
