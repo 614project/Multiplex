@@ -8,6 +8,7 @@ import '../../state/project_session.dart';
 import '../cell_detail/cell_detail_page.dart';
 import '../common/cell_image.dart';
 import '../common/server_status.dart';
+import '../common/source_image.dart';
 import '../theme.dart';
 import 'cell_editor_sheet.dart';
 
@@ -103,6 +104,7 @@ class MobileCellTile extends StatelessWidget {
         final path = cell.displayImagePath;
         final preview = cell.livePreview;
         final selected = cell.isSelected;
+        final source = session.isImg2Img ? session.sourceImageFor(cell) : null;
         return AnimatedScale(
           duration: const Duration(milliseconds: 160),
           scale: selecting && selected ? 0.94 : 1,
@@ -130,7 +132,7 @@ class MobileCellTile extends StatelessWidget {
                       child: FileThumbnail(path: path, decodeWidth: 240),
                     )
                   else
-                    _PromptPlaceholder(cell: cell),
+                    _PromptPlaceholder(cell: cell, sourcePath: source),
                   if (cell.isBusy && preview != null) MemoryPreview(bytes: preview),
                   // Legibility gradient for the caption.
                   const Positioned(
@@ -182,6 +184,22 @@ class MobileCellTile extends StatelessWidget {
                       icon: const Icon(Icons.edit_outlined, size: 20),
                     ),
                   ),
+                  // A cell with results shows which image it starts from when it has its own.
+                  if (path != null && source != null && cell.sourceImagePath != null && !selecting && !selected)
+                    Positioned(
+                      top: 10,
+                      left: 10,
+                      child: Tooltip(
+                        message: 'Source image of this cell',
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(9),
+                            border: Border.all(color: Colors.white, width: 1.5),
+                          ),
+                          child: SourceThumbnail(path: source, size: 30, radius: 8),
+                        ),
+                      ),
+                    ),
                   if (cell.isBusy)
                     Positioned(
                       top: 10,
@@ -225,14 +243,49 @@ class MobileCellTile extends StatelessWidget {
 }
 
 class _PromptPlaceholder extends StatelessWidget {
-  const _PromptPlaceholder({required this.cell});
+  const _PromptPlaceholder({required this.cell, this.sourcePath});
 
   final CellModel cell;
+
+  /// In image to image projects the source image is shown behind the prompt.
+  final String? sourcePath;
 
   @override
   Widget build(BuildContext context) {
     final colors = context.colors;
     final prompt = cell.prompt.trim();
+    final sourcePath = this.sourcePath;
+    if (sourcePath != null) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          FileThumbnail(path: sourcePath, decodeWidth: 240),
+          const DecoratedBox(decoration: BoxDecoration(color: Color(0x73000000))),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(14, 16, 14, 56),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(Icons.photo_filter_outlined, color: Colors.white70),
+                const SizedBox(height: 10),
+                Expanded(
+                  child: Text(
+                    prompt.isEmpty ? 'Tap to write a prompt' : prompt,
+                    overflow: TextOverflow.fade,
+                    style: context.text.bodyMedium?.copyWith(
+                      color: Colors.white.withValues(alpha: prompt.isEmpty ? 0.7 : 0.95),
+                      fontStyle: prompt.isEmpty ? FontStyle.italic : FontStyle.normal,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      );
+    }
+
     return DecoratedBox(
       decoration: BoxDecoration(
         gradient: LinearGradient(

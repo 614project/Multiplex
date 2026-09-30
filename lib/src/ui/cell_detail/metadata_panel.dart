@@ -90,28 +90,47 @@ class _MetadataContent extends StatelessWidget {
       (Icons.timeline, 'Scheduler', orUnavailable(metadata.scheduler)),
       (Icons.layers_clear_outlined, 'CLIP skip', orUnavailable(metadata.clipSkip?.toString())),
       (Icons.aspect_ratio, 'Size', metadata.sizeText),
+      if (metadata.isImg2Img)
+        (
+          Icons.photo_filter_outlined,
+          'Denoising',
+          orUnavailable(metadata.denoisingStrength == null ? null : NumberField.format(metadata.denoisingStrength, 2)),
+        ),
     ];
 
     return ListView(
       controller: scrollController,
       padding: padding,
       children: [
-        Row(
-          children: [
-            Expanded(child: Text('Image details', style: context.text.titleLarge)),
-            if (metadata.metadataSource.isNotEmpty)
-              Chip(
-                label: Text(metadata.metadataSource),
-                visualDensity: VisualDensity.compact,
-                backgroundColor: colors.tertiaryContainer,
-                side: BorderSide.none,
-              ),
-          ],
-        ),
+        Text('Image details', style: context.text.titleLarge),
         Text(
           ImageTimestamps.format(metadata.generatedAt),
           style: context.text.bodySmall?.copyWith(color: colors.onSurfaceVariant),
         ),
+        if (metadata.isImg2Img || metadata.metadataSource.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              if (metadata.isImg2Img)
+                Chip(
+                  avatar: const Icon(Icons.photo_filter_outlined, size: 16),
+                  label: const Text('img2img'),
+                  visualDensity: VisualDensity.compact,
+                  backgroundColor: colors.secondaryContainer,
+                  side: BorderSide.none,
+                ),
+              if (metadata.metadataSource.isNotEmpty)
+                Chip(
+                  label: Text(metadata.metadataSource),
+                  visualDensity: VisualDensity.compact,
+                  backgroundColor: colors.tertiaryContainer,
+                  side: BorderSide.none,
+                ),
+            ],
+          ),
+        ],
         if (metadata.parseStatusMessage.isNotEmpty) ...[
           const SizedBox(height: 12),
           Container(

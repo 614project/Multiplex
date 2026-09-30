@@ -1,8 +1,9 @@
 # Multiplex
 
-Multiplex batches Stable Diffusion txt2img requests across many prompt cells. Each project keeps shared
-generation settings, each cell adds its own prompt and optional overrides, and one press of **Generate**
-runs every cell (or only the selected ones) against a Stable Diffusion WebUI (A1111) or ComfyUI server.
+Multiplex batches Stable Diffusion txt2img and img2img requests across many prompt cells. Each project keeps
+shared generation settings, each cell adds its own prompt and optional overrides, and one press of
+**Generate** runs every cell (or only the selected ones) against a Stable Diffusion WebUI (A1111) or ComfyUI
+server.
 
 It is a Flutter / Material 3 rebuild of the Windows-only
 [WebuiMultiflex](https://github.com/614project/WebuiMultiflex). The generation engine is a direct port, and it
@@ -36,8 +37,11 @@ asks once as well (**System Settings → Privacy & Security → Open Anyway**).
 - A two-stage interrupt. The first press stops after the image already requested, and the second
   force-stops the current job. Work left on the server is then cleaned up (queued ComfyUI prompts,
   Agent Scheduler tasks, a timed-out WebUI request).
-- WebUI generation modes: `Standard`, `Polling (Proxy Safe)` and `Agent Scheduler`. ComfyUI uses a
-  built-in txt2img workflow, so no workflow JSON is needed.
+- **Image to image**: start from a source image, shared by the project or chosen per cell, with
+  denoising strength, resize mode and the output size taken from the source. See
+  [Image to image](#image-to-image).
+- WebUI generation modes: `Standard`, `Polling (Proxy Safe)` and `Agent Scheduler`. ComfyUI uses built-in
+  txt2img and img2img workflows, so no workflow JSON is needed.
 - Live previews and progress in the header, the project list and the mobile dock.
 - Cell detail page with the image history, a representative image, PNG metadata inspection (WebUI infotext
   and ComfyUI prompt graph), and a **Versus** tournament to pick the best of several images.
@@ -94,6 +98,33 @@ The phone layout is built for one hand. It doesn't shrink the desktop screens:
 
 ![Phone layout](docs/screenshots/mobile.png)
 
+## Image to image
+
+Turn on **Image to image** in the project settings (the **Setup** tab on phones). Each cell then starts
+from a source image instead of noise:
+
+- The **project source image** is used by every cell that has no image of its own.
+- A **cell source image** replaces the project's for that cell. On desktop, set it with the image button in
+  the cell header or the cell menu. On phones, set it in the cell editor. You can also open a result in
+  the cell's image history and choose **Use as source image** (the icon next to the star). That is the
+  quickest way to keep refining a picture, and it turns image to image on if it was off.
+- **Denoising strength** decides how far the result may move away from the source: low values stay close,
+  high values follow the prompt. Cells can override it.
+- **Resize mode** fits the source to the output size, the same way WebUI does: *Just resize*, *Crop and
+  resize*, *Resize and fill* or *Just resize (latent upscale)*.
+- **Use the source image size** (on by default) makes each cell's output the size of its source, rounded to
+  a multiple of 8. Cell size overrides still apply. Turn it off to use the project's width and height.
+- Hires.fix is a text-to-image feature and is ignored while image to image is on.
+- Cells without any source image are skipped with one warning. The other cells still run.
+
+Picked images are copied into the project's `sources` folder, so moving or deleting the original file doesn't
+break the project. Exports embed the source images, so an imported project has them as well. The cell detail
+page marks image to image results with an `img2img` chip and shows their denoising strength.
+
+![Image to image settings](docs/screenshots/img2img-desktop.png)
+
+![Image to image on a phone](docs/screenshots/img2img-mobile.png)
+
 ## Server setup
 
 - **WebUI (A1111 / Forge)**: start it with `--api`. Add `--listen` if the app runs on another device (a phone,
@@ -114,10 +145,11 @@ exported JSON.
 ### API usage
 
 WebUI:
-- `POST /sdapi/v1/txt2img`
+- `POST /sdapi/v1/txt2img`, or `POST /sdapi/v1/img2img` with `init_images`, `denoising_strength` and
+  `resize_mode`
 - `GET /sdapi/v1/progress` and `POST /internal/progress`, for live previews and proxy-safe recovery
 - `POST /sdapi/v1/interrupt`
-- The Agent Scheduler queue, task and result endpoints
+- The Agent Scheduler queue (`/queue/txt2img` or `/queue/img2img`), task and result endpoints
 - LoRAs are appended as `<lora:name:weight>`. The checkpoint and CLIP skip are sent in `override_settings`.
 
 ComfyUI:
@@ -125,6 +157,10 @@ ComfyUI:
   metadata is cached per address for 7 days and fetched once per job.
 - Generation goes through `/prompt`, then `/history/{id}`, then `/view`. LoRAs are chained through
   `LoraLoader` or `LoraLoaderModelOnly`, and CLIP skip uses `CLIPSetLastLayer`.
+- For img2img, each source image is uploaded once per job through `/upload/image` (as
+  `multiplex-source-….png`). The workflow then loads it with `LoadImage`, fits it with `ImageScale`
+  (`ImagePadForOutpaint` for *Resize and fill*, or `LatentUpscale` after encoding for the latent mode),
+  encodes it with `VAEEncode`, and sets the sampler's `denoise`.
 
 ## Prompt composition
 
@@ -144,7 +180,8 @@ ComfyUI:
 
 Both the `WebuiMultiflex.Project` and `WebuiMultiflex.ProjectBundle` formats (PascalCase keys) are read.
 Multiplex exports the same shape under the `Multiplex.*` format names. Generated images aren't part of the
-JSON, so copy them yourself if you need them.
+JSON, so copy them yourself if you need them. Image to image settings and the embedded `SourceImages` are
+Multiplex additions: WebuiMultiflex ignores them and treats such a project as text to image.
 
 Differences from the original:
 
@@ -170,6 +207,7 @@ The data root is the platform's application support folder, or `MULTIPLEX_DATA_D
 <root>/comfy-metadata-cache.json
 <root>/projects/<project-id>/project.json
 <root>/projects/<project-id>/cells/<cell-id>/<yyyyMMdd_HHmmssfff>.png
+<root>/projects/<project-id>/sources/source-<id>.png              (image to image source images)
 <root>/prompt-autocomplete/{danbooru,extra-quality-tags,custom-tags}.csv
 <root>/logs/multiplex.log
 ```

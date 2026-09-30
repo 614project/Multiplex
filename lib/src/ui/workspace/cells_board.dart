@@ -10,6 +10,7 @@ import '../cell_detail/cell_detail_page.dart';
 import '../common/cell_image.dart';
 import '../common/dialogs.dart';
 import '../common/prompt_field.dart';
+import '../common/source_image.dart';
 import '../theme.dart';
 import 'cell_menu.dart';
 
@@ -162,12 +163,18 @@ class CellPreview extends StatelessWidget {
     final colors = context.colors;
     final path = cell.displayImagePath;
     final preview = cell.livePreview;
+    final source = session.isImg2Img ? session.sourceImageFor(cell) : null;
+    final needsSource = session.isImg2Img && source == null;
     return Material(
       color: colors.surfaceContainerHighest.withValues(alpha: 0.5),
       borderRadius: BorderRadius.circular(16),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: path == null ? () => session.regenerate(cell) : () => openCellDetail(context, session, cell),
+        onTap: path != null
+            ? () => openCellDetail(context, session, cell)
+            : needsSource
+            ? () => chooseCellSourceImage(context, session, cell)
+            : () => session.regenerate(cell),
         onSecondaryTapUp: (details) => showCellContextMenu(context, session, cell, details.globalPosition),
         child: Stack(
           fit: StackFit.expand,
@@ -177,8 +184,12 @@ class CellPreview extends StatelessWidget {
                 tag: 'cell-image-${cell.id}',
                 child: FileThumbnail(path: path, fit: fit, decodeWidth: decodeWidth),
               )
+            else if (source != null)
+              _SourcePlaceholder(path: source, fit: fit, decodeWidth: decodeWidth, showLabel: !cell.isBusy)
             else if (cell.isBusy)
               const ImagePlaceholder(icon: null)
+            else if (needsSource)
+              const ImagePlaceholder(icon: Icons.add_photo_alternate_outlined, label: 'Choose a source image')
             else
               const ImagePlaceholder(icon: Icons.auto_awesome_outlined, label: 'Click to generate'),
             if (cell.isBusy && preview != null)
@@ -199,6 +210,58 @@ class CellPreview extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Before the first result of an image to image cell, its source image stands in, dimmed.
+class _SourcePlaceholder extends StatelessWidget {
+  const _SourcePlaceholder({required this.path, required this.fit, required this.decodeWidth, required this.showLabel});
+
+  final String path;
+  final BoxFit fit;
+  final double? decodeWidth;
+  final bool showLabel;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        Opacity(
+          opacity: 0.45,
+          child: FileThumbnail(path: path, fit: fit, decodeWidth: decodeWidth),
+        ),
+        if (showLabel)
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.all(8),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                decoration: BoxDecoration(
+                  color: colors.surface.withValues(alpha: 0.85),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.auto_awesome_outlined, size: 16, color: colors.primary),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        'Source · click to generate',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: context.text.labelMedium,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -244,6 +307,7 @@ class _CellHeader extends StatelessWidget {
               ),
             ),
           ),
+        if (session.isImg2Img) CellSourceButton(session: session, cell: cell),
         IconButton(
           tooltip: 'Regenerate this cell',
           onPressed: () => session.regenerate(cell),

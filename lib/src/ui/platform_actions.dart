@@ -195,6 +195,12 @@ abstract final class PlatformActions {
     return [for (final file in files) utf8.decode(await file.readAsBytes(), allowMalformed: true)];
   }
 
+  /// Lets the user pick an image (from the photo library on phones) and returns its bytes.
+  static Future<Uint8List?> pickImage() async {
+    final file = await FilePicker.pickFile(dialogTitle: 'Choose a source image', type: FileType.image);
+    return file?.readAsBytes();
+  }
+
   static Future<Uint8List?> pickCsvFile() async {
     final file = await FilePicker.pickFile(
       dialogTitle: 'Import autocomplete CSV',

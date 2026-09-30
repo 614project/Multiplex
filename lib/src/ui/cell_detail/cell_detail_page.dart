@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 
 import '../../api/sd_client.dart';
 import '../../core/image_timestamps.dart';
+import '../../models/img2img.dart';
 import '../../state/app_state.dart';
 import '../../state/cell_gallery.dart';
 import '../../state/cell_model.dart';
@@ -146,6 +147,41 @@ class _GalleryActions {
       await PlatformActions.openFile(image.path);
     }
   }
+
+  /// Makes the shown image the cell's own image to image source, turning image to image on first
+  /// when the project still generates from text.
+  Future<void> useAsSource() async {
+    final image = gallery.primary;
+    if (image == null) {
+      return;
+    }
+
+    final session = gallery.session;
+    final cell = gallery.cell;
+    final messenger = _app.messenger;
+    if (!session.isImg2Img) {
+      final confirmed = await showConfirmDialog(
+        context,
+        title: 'Turn on image to image?',
+        message:
+            '${cell.displayName} will start from this image. The project switches to image to image; other cells '
+            'use the project source image or their own.',
+        confirmLabel: 'Turn on',
+      );
+      if (!confirmed) {
+        return;
+      }
+
+      session.setGenerationType(GenerationType.img2img);
+    }
+
+    try {
+      await session.setCellSourceImage(cell, image.path);
+      messenger.success('${cell.displayName} now starts from this image.');
+    } catch (error) {
+      messenger.error('Could not use the image as source: ${SdClient.describeError(error)}');
+    }
+  }
 }
 
 // -------------------------------------------------------------------------------------------------
@@ -209,6 +245,11 @@ class _DesktopCellDetailState extends State<_DesktopCellDetail> {
                     : 'Use as representative image',
                 onPressed: primary == null ? null : actions.toggleRepresentative,
                 icon: Icon(primary != null && gallery.isRepresentative(primary) ? Icons.star : Icons.star_border),
+              ),
+              IconButton(
+                tooltip: 'Use as source image (image to image)',
+                onPressed: primary == null ? null : actions.useAsSource,
+                icon: const Icon(Icons.photo_filter_outlined),
               ),
               IconButton(
                 tooltip: 'Open image',
@@ -662,6 +703,11 @@ class _MobileCellDetailState extends State<_MobileCellDetail> {
                 isRepresentative ? Icons.star : Icons.star_border,
                 color: isRepresentative ? Colors.amber : foreground,
               ),
+            ),
+            IconButton(
+              tooltip: 'Use as source image (image to image)',
+              onPressed: actions.useAsSource,
+              icon: const Icon(Icons.photo_filter_outlined, color: foreground),
             ),
             IconButton(
               tooltip: 'Select images',

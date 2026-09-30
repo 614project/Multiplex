@@ -6,12 +6,14 @@ import '../../state/project_session.dart';
 import '../actions.dart';
 import '../cell_detail/cell_detail_page.dart';
 import '../common/cell_image.dart';
+import '../common/number_field.dart';
 import '../common/prompt_field.dart';
+import '../common/source_image.dart';
 import '../dialogs/cell_dialogs.dart';
 import '../theme.dart';
 
-/// Full-height editor for one cell on phones: name, prompt with suggestion chips above the keyboard,
-/// overrides, a preview of the exact prompt that will be sent, and quick actions.
+/// Full-height editor for one cell on phones: name, source image (image to image), prompt with
+/// suggestion chips, overrides, a preview of the exact prompt that will be sent, and quick actions.
 Future<void> showCellEditor(BuildContext context, ProjectSession session, CellModel cell, {bool focusPrompt = false}) {
   return showModalBottomSheet<void>(
     context: context,
@@ -124,6 +126,10 @@ class _CellEditorState extends State<_CellEditor> {
                     ),
                   ],
                 ),
+                if (session.isImg2Img) ...[
+                  const SizedBox(height: 16),
+                  CellSourcePanel(session: session, cell: cell, thumbnailSize: 96),
+                ],
                 const SizedBox(height: 16),
                 PromptField(
                   label: 'Prompt',
@@ -140,7 +146,7 @@ class _CellEditorState extends State<_CellEditor> {
                   icon: Icons.tune,
                   title: 'Overrides',
                   subtitle: cell.overrideLabels.isEmpty ? 'Uses the project settings' : cell.overrideLabels.join(' · '),
-                  child: CellOverridesForm(session: session, cell: cell),
+                  child: CellOverridesForm(session: session, cell: cell, showSource: false),
                 ),
                 const SizedBox(height: 8),
                 _ExpansionCard(
@@ -159,7 +165,9 @@ class _CellEditorState extends State<_CellEditor> {
                       SelectableText(request.negativePrompt ?? '—', style: context.text.bodySmall),
                       const SizedBox(height: 12),
                       Text(
-                        '${request.steps} steps · CFG ${request.cfgScale} · ${request.width}×${request.height} · '
+                        '${session.isImg2Img ? 'img2img · denoise ${NumberField.format(request.denoisingStrength, 2)} · '
+                                  '${request.resizeMode} · ' : ''}'
+                        '${request.steps} steps · CFG ${request.cfgScale} · ${_sizeText(session, cell, request.width, request.height)} · '
                         '${request.samplerName ?? ''} ${request.scheduler ?? ''}',
                         style: context.text.bodySmall?.copyWith(color: colors.onSurfaceVariant),
                       ),
@@ -210,6 +218,16 @@ class _CellEditorState extends State<_CellEditor> {
       },
     );
   }
+}
+
+/// The preview request has no source image, so a size taken from the source is described instead.
+String _sizeText(ProjectSession session, CellModel cell, int width, int height) {
+  final sourceSized = session.isImg2Img && session.settings.useSourceImageSize;
+  if (!sourceSized || (cell.overrideWidth != null && cell.overrideHeight != null)) {
+    return '$width×$height';
+  }
+
+  return cell.overrideWidth == null && cell.overrideHeight == null ? 'source size' : 'source size with overrides';
 }
 
 class _ExpansionCard extends StatelessWidget {

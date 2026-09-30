@@ -101,11 +101,11 @@ void main() {
 
     expect(server.img2imgRequests.map((request) => request['prompt']), ['subject 3']);
     expect([server.img2imgRequests.single['width'], server.img2imgRequests.single['height']], [256, 384]);
-    expect(
-      testApp.messageTexts.where((message) => message.contains('has no source image')),
-      hasLength(3),
-      reason: testApp.messageTexts.join('\n'),
-    );
+    expect(testApp.messageTexts, contains('Skipped 3 cells without a source image: Cell 1, Cell 2, Cell 4.'));
+
+    // A job whose only cell has no source image is not queued at all.
+    expect(project.regenerate(project.cells.first), isNull);
+    await waitFor(() => testApp.messageTexts.last.contains('Cell 1 has no source image'));
   });
 
   test('custom size and cell size overrides win over the source size', () async {

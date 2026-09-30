@@ -4,13 +4,25 @@ import '../../state/cell_model.dart';
 import '../../state/project_session.dart';
 import '../actions.dart';
 import '../cell_detail/cell_detail_page.dart';
+import '../common/source_image.dart';
 import '../dialogs/cell_dialogs.dart';
 import '../layout.dart';
 import '../platform_actions.dart';
 
-enum CellMenuAction { details, openExternally, rename, overrides, openFolder, copy, regenerate, remove }
+enum CellMenuAction {
+  details,
+  openExternally,
+  rename,
+  overrides,
+  chooseSource,
+  useProjectSource,
+  openFolder,
+  copy,
+  regenerate,
+  remove,
+}
 
-List<PopupMenuEntry<CellMenuAction>> buildCellMenuItems(CellModel cell) => [
+List<PopupMenuEntry<CellMenuAction>> buildCellMenuItems(ProjectSession session, CellModel cell) => [
   PopupMenuItem(
     value: CellMenuAction.details,
     enabled: cell.hasImage,
@@ -26,10 +38,24 @@ List<PopupMenuEntry<CellMenuAction>> buildCellMenuItems(CellModel cell) => [
     value: CellMenuAction.rename,
     child: ListTile(leading: Icon(Icons.drive_file_rename_outline), title: Text('Rename')),
   ),
-  const PopupMenuItem(
+  PopupMenuItem(
     value: CellMenuAction.overrides,
-    child: ListTile(leading: Icon(Icons.tune), title: Text('Edit overrides')),
+    child: ListTile(
+      leading: const Icon(Icons.tune),
+      title: Text(session.isImg2Img ? 'Edit source & overrides' : 'Edit overrides'),
+    ),
   ),
+  if (session.isImg2Img) ...[
+    const PopupMenuItem(
+      value: CellMenuAction.chooseSource,
+      child: ListTile(leading: Icon(Icons.add_photo_alternate_outlined), title: Text('Choose source image…')),
+    ),
+    if (cell.sourceImagePath != null)
+      const PopupMenuItem(
+        value: CellMenuAction.useProjectSource,
+        child: ListTile(leading: Icon(Icons.layers_clear_outlined), title: Text('Use project source image')),
+      ),
+  ],
   if (PlatformInfo.canOpenFolders)
     const PopupMenuItem(
       value: CellMenuAction.openFolder,
@@ -68,6 +94,10 @@ Future<void> runCellMenuAction(
       await ProjectActions.renameCell(context, cell);
     case CellMenuAction.overrides:
       await showCellOverridesDialog(context, session, cell);
+    case CellMenuAction.chooseSource:
+      await chooseCellSourceImage(context, session, cell);
+    case CellMenuAction.useProjectSource:
+      await session.setCellSourceImage(cell, null);
     case CellMenuAction.openFolder:
       await ProjectActions.openFolder(context, session.cellFolder(cell));
     case CellMenuAction.copy:
@@ -89,7 +119,7 @@ Future<void> showCellContextMenu(
   final action = await showMenu<CellMenuAction>(
     context: context,
     position: RelativeRect.fromRect(globalPosition & const Size(1, 1), Offset.zero & overlay.size),
-    items: buildCellMenuItems(cell),
+    items: buildCellMenuItems(session, cell),
   );
   if (action != null && context.mounted) {
     await runCellMenuAction(context, session, cell, action);
@@ -106,7 +136,7 @@ class CellMenuButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return PopupMenuButton<CellMenuAction>(
       tooltip: 'Cell actions',
-      itemBuilder: (_) => buildCellMenuItems(cell),
+      itemBuilder: (_) => buildCellMenuItems(session, cell),
       onSelected: (action) => runCellMenuAction(context, session, cell, action),
     );
   }

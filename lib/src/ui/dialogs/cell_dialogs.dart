@@ -5,14 +5,17 @@ import '../../state/cell_model.dart';
 import '../../state/project_session.dart';
 import '../common/number_field.dart';
 import '../common/prompt_field.dart';
+import '../common/source_image.dart';
 import '../theme.dart';
 
-/// Per-cell overrides; empty numeric fields fall back to the project settings.
+/// Per-cell overrides; empty numeric fields fall back to the project settings. In image to image
+/// projects it also edits the cell's source image ([showSource]) and denoising strength.
 class CellOverridesForm extends StatelessWidget {
-  const CellOverridesForm({super.key, required this.session, required this.cell});
+  const CellOverridesForm({super.key, required this.session, required this.cell, this.showSource = true});
 
   final ProjectSession session;
   final CellModel cell;
+  final bool showSource;
 
   void _set({
     int? steps,
@@ -34,15 +37,33 @@ class CellOverridesForm extends StatelessWidget {
     );
   }
 
+  String _sizeHint(int projectValue) =>
+      session.isImg2Img && session.settings.useSourceImageSize ? 'Source image' : 'Project ($projectValue)';
+
   @override
   Widget build(BuildContext context) {
     final settings = session.settings;
     return ListenableBuilder(
-      listenable: cell,
+      listenable: Listenable.merge([cell, session]),
       builder: (context, _) => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (session.isImg2Img) ...[
+            if (showSource) ...[CellSourcePanel(session: session, cell: cell), const SizedBox(height: 16)],
+            NumberField(
+              label: 'Denoising strength',
+              hint: 'Project (${NumberField.format(settings.denoisingStrength, 2)})',
+              value: cell.overrideDenoisingStrength,
+              allowEmpty: true,
+              min: 0,
+              max: 1,
+              step: 0.05,
+              decimals: 2,
+              onChanged: (value) => cell.setDenoisingOverride(value?.toDouble()),
+            ),
+            const SizedBox(height: 12),
+          ],
           Row(
             children: [
               Expanded(
@@ -78,7 +99,7 @@ class CellOverridesForm extends StatelessWidget {
               Expanded(
                 child: NumberField(
                   label: 'Width',
-                  hint: 'Project (${settings.width})',
+                  hint: _sizeHint(settings.width),
                   value: cell.overrideWidth,
                   allowEmpty: true,
                   min: 64,
@@ -91,7 +112,7 @@ class CellOverridesForm extends StatelessWidget {
               Expanded(
                 child: NumberField(
                   label: 'Height',
-                  hint: 'Project (${settings.height})',
+                  hint: _sizeHint(settings.height),
                   value: cell.overrideHeight,
                   allowEmpty: true,
                   min: 64,
@@ -121,7 +142,7 @@ Future<void> showCellOverridesDialog(BuildContext context, ProjectSession sessio
   return showDialog<void>(
     context: context,
     builder: (context) => AlertDialog(
-      title: Text('Overrides · ${cell.displayName}'),
+      title: Text(session.isImg2Img ? 'Source & overrides · ${cell.displayName}' : 'Overrides · ${cell.displayName}'),
       content: SizedBox(
         width: 460,
         child: SingleChildScrollView(
@@ -142,7 +163,9 @@ Future<void> showCellOverridesDialog(BuildContext context, ProjectSession sessio
       actions: [
         TextButton(
           onPressed: () {
-            cell.setOverrides(steps: null, cfgScale: null, width: null, height: null, negativePrompt: '');
+            cell
+              ..setOverrides(steps: null, cfgScale: null, width: null, height: null, negativePrompt: '')
+              ..setDenoisingOverride(null);
             Navigator.pop(context);
           },
           child: const Text('Clear all'),

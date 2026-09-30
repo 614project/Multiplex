@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/url_tools.dart';
 import '../../models/api_platform.dart';
+import '../../models/img2img.dart';
 import '../../models/lora_selection.dart';
 import '../../state/app_state.dart';
 import '../../state/project_session.dart';
@@ -10,6 +11,7 @@ import '../common/number_field.dart';
 import '../common/prompt_field.dart';
 import '../common/section_card.dart';
 import '../common/server_status.dart';
+import '../common/source_image.dart';
 import '../dialogs/model_pickers.dart';
 import '../theme.dart';
 
@@ -27,7 +29,8 @@ const sizePresets = <(int, int)>[
   (1344, 768),
 ];
 
-/// Shared project settings: connection, model, prompts, sampling, Hires.fix and project overrides.
+/// Shared project settings: connection, model, prompts, image to image, sampling, Hires.fix and
+/// project overrides.
 /// [compact] switches to collapsible sections with sliders and size presets for touch screens.
 class ProjectSettingsView extends StatelessWidget {
   const ProjectSettingsView({super.key, required this.session, this.compact = false, this.bottomPadding = 24});
@@ -55,6 +58,7 @@ class ProjectSettingsView extends StatelessWidget {
           _PromptsSection(session: session, compact: compact),
         ];
         final right = [
+          _Img2ImgSection(session: session, compact: compact),
           _SamplingSection(session: session, compact: compact),
           _HiresSection(session: session, compact: compact),
           _OverridesSection(session: session, compact: compact),
@@ -372,6 +376,8 @@ class _SamplingSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final settings = session.settings;
     final seedText = settings.seed < 0 ? 'random seed' : 'seed ${settings.seed}';
+    final sourceSized = settings.isImg2Img && settings.useSourceImageSize;
+    final sizeText = sourceSized ? 'source size' : '${settings.width}×${settings.height}';
     final optionsEnabled = !(settings.platform.isComfyUi && session.isComfyMetadataLoading);
     return SectionCard(
       icon: Icons.tune,
@@ -381,7 +387,7 @@ class _SamplingSection extends StatelessWidget {
       initiallyExpanded: !compact,
       summary:
           '${settings.samplerName} · ${settings.scheduler} · ${settings.steps} steps · '
-          'CFG ${NumberField.format(settings.cfgScale, 2)} · ${settings.width}×${settings.height} · $seedText',
+          'CFG ${NumberField.format(settings.cfgScale, 2)} · $sizeText · $seedText',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -448,7 +454,7 @@ class _SamplingSection extends StatelessWidget {
               ],
             ),
           const SizedBox(height: 14),
-          _SizeEditor(session: session, compact: compact),
+          if (sourceSized) _SourceSizeNote(session: session) else _SizeEditor(session: session, compact: compact),
           const SizedBox(height: 14),
           Row(
             children: [
@@ -472,6 +478,118 @@ class _SamplingSection extends StatelessWidget {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Replaces the size fields while image to image takes the size from each source image.
+class _SourceSizeNote extends StatelessWidget {
+  const _SourceSizeNote({required this.session});
+
+  final ProjectSession session;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.colors;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 8, 8, 8),
+      decoration: BoxDecoration(color: colors.surfaceContainerHighest, borderRadius: BorderRadius.circular(12)),
+      child: Row(
+        children: [
+          Icon(Icons.photo_size_select_large_outlined, size: 20, color: colors.onSurfaceVariant),
+          const SizedBox(width: 10),
+          Expanded(child: Text('Size follows each source image', style: context.text.bodyMedium)),
+          TextButton(
+            onPressed: () => session.edit((settings) => settings.useSourceImageSize = false),
+            child: const Text('Set a size'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Image to image: the project source image, denoising strength and how sources are fitted.
+class _Img2ImgSection extends StatelessWidget {
+  const _Img2ImgSection({required this.session, required this.compact});
+
+  final ProjectSession session;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = session.settings;
+    final enabled = settings.isImg2Img;
+    final source = session.projectSourceImagePath;
+    final note = context.text.bodySmall?.copyWith(color: context.colors.onSurfaceVariant);
+    return SectionCard(
+      icon: Icons.photo_filter_outlined,
+      title: 'Image to image',
+      subtitle: 'Start from a source image instead of noise',
+      collapsible: compact,
+      initiallyExpanded: !compact || enabled,
+      summary: enabled
+          ? 'On · denoise ${NumberField.format(settings.denoisingStrength, 2)} · ${settings.resizeMode}'
+                '${source == null ? ' · no project image' : ''}'
+          : 'Off',
+      trailing: Switch(
+        value: enabled,
+        onChanged: (value) => session.setGenerationType(value ? GenerationType.img2img : GenerationType.txt2img),
+      ),
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 180),
+        opacity: enabled ? 1 : 0.5,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SourceImagePanel(
+              path: source,
+              title: 'Project source image',
+              emptyText: 'Cells without their own image need one',
+              enabled: enabled,
+              onChoose: () => chooseProjectSourceImage(context, session),
+              onClear: source == null ? null : () => session.setProjectSourceImage(null),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'A cell can use its own image instead: set it on the cell, or pick a result in the cell\'s image '
+              'history and use "Use as source image".',
+              style: note,
+            ),
+            const SizedBox(height: 14),
+            LabeledSlider(
+              label: 'Denoising',
+              value: settings.denoisingStrength,
+              min: 0,
+              max: 1,
+              divisions: 20,
+              enabled: enabled,
+              format: (value) => NumberField.format(value, 2),
+              onChanged: (value) => session.edit((settings) => settings.denoisingStrength = (value * 20).round() / 20),
+            ),
+            Text('Low values stay close to the source image; high values follow the prompt.', style: note),
+            const SizedBox(height: 14),
+            OptionDropdown(
+              label: 'Resize mode',
+              value: settings.resizeMode,
+              options: Img2ImgResizeModes.all,
+              enabled: enabled,
+              onSelected: (value) => session.edit((settings) => settings.resizeMode = value),
+            ),
+            const SizedBox(height: 4),
+            Text(Img2ImgResizeModes.describe(settings.resizeMode), style: note),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              value: settings.useSourceImageSize,
+              onChanged: enabled ? (value) => session.edit((settings) => settings.useSourceImageSize = value) : null,
+              title: const Text('Use the source image size'),
+              subtitle: const Text(
+                'The output size follows each source image, rounded to a multiple of 8. Cell size overrides still apply.',
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -616,19 +734,25 @@ class _HiresSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final settings = session.settings;
-    final enabled = settings.enableHiresFix;
+    // Hires.fix is a txt2img second pass; image to image requests ignore it.
+    final available = !settings.isImg2Img;
+    final enabled = settings.enableHiresFix && available;
     return SectionCard(
       icon: Icons.high_quality_outlined,
       title: 'Hires.fix',
-      subtitle: 'Optional second pass. Leave resize at 0 × 0 to use the scale.',
+      subtitle: available
+          ? 'Optional second pass. Leave resize at 0 × 0 to use the scale.'
+          : 'Text to image only. It is not used while image to image is on.',
       collapsible: compact,
       initiallyExpanded: !compact,
-      summary: enabled
+      summary: !available
+          ? 'Not used for image to image'
+          : enabled
           ? 'On · ×${NumberField.format(settings.hiresScale, 2)} · ${settings.hiresUpscaler} · denoise ${NumberField.format(settings.hiresDenoisingStrength, 2)}'
           : 'Off',
       trailing: Switch(
         value: enabled,
-        onChanged: (value) => session.edit((settings) => settings.enableHiresFix = value),
+        onChanged: available ? (value) => session.edit((settings) => settings.enableHiresFix = value) : null,
       ),
       child: AnimatedOpacity(
         duration: const Duration(milliseconds: 180),

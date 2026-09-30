@@ -1,10 +1,16 @@
+import 'dart:io';
+
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:multiplex/src/app.dart';
+import 'package:multiplex/src/models/img2img.dart';
 import 'package:multiplex/src/state/project_session.dart';
 import 'package:multiplex/src/ui/cell_detail/cell_detail_page.dart';
+import 'package:multiplex/src/ui/common/section_card.dart';
+import 'package:multiplex/src/ui/common/source_image.dart';
 import 'package:multiplex/src/ui/desktop/desktop_shell.dart';
 import 'package:multiplex/src/ui/mobile/generation_dock.dart';
 import 'package:multiplex/src/ui/mobile/mobile_shell.dart';
@@ -152,5 +158,53 @@ void main() {
 
     await tester.pageBack();
     await tester.pump(const Duration(seconds: 1));
+  });
+
+  testWidgets('desktop image to image settings and cell source controls', (tester) async {
+    await pumpApp(tester, const Size(1440, 900));
+    final project = testApp.app.selected!;
+    await tester.tap(find.text('Settings').last);
+    await tester.pumpAndSettle();
+
+    final section = find.ancestor(of: find.text('Image to image'), matching: find.byType(SectionCard));
+    // The first switch is the one in the section header.
+    await tester.tap(find.descendant(of: section, matching: find.byType(Switch)).first);
+    await tester.pumpAndSettle();
+    expect(project.isImg2Img, isTrue);
+    expect(find.text('Project source image'), findsOneWidget);
+    expect(find.text('Cells without their own image need one'), findsOneWidget);
+    expect(find.text('Text to image only. It is not used while image to image is on.'), findsOneWidget);
+
+    // With a project source image the size fields make way for the source size note.
+    await tester.runAsync(() async {
+      final image = img.Image(width: 96, height: 64);
+      final file = File('${testApp.directory.path}/picked.png')..writeAsBytesSync(img.encodePng(image));
+      await project.setProjectSourceImage(file.path);
+    });
+    await tester.pumpAndSettle();
+    expect(find.text('Size follows each source image'), findsOneWidget);
+
+    await tester.tap(find.textContaining('Cells ('));
+    await tester.pumpAndSettle();
+    // The list is lazy, so only the cells on screen are built.
+    final visible = find.byType(CellSourceButton).evaluate().length;
+    expect(visible, greaterThanOrEqualTo(2));
+    expect(find.text('Source · click to generate'), findsNWidgets(visible));
+    expect(tester.takeException(), isNull);
+    await tester.runAsync(project.saveNow);
+  });
+
+  testWidgets('phone cell editor shows the source image of image to image projects', (tester) async {
+    await pumpApp(tester, const Size(400, 860));
+    final project = testApp.app.selected!..setGenerationType(GenerationType.img2img);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('a red fox'));
+    await tester.pumpAndSettle();
+    expect(find.byType(CellSourcePanel), findsOneWidget);
+    expect(find.text('Choose one here or in the project settings'), findsOneWidget);
+    expect(find.text('Choose image'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.runAsync(project.saveNow);
   });
 }

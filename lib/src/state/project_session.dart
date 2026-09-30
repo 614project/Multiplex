@@ -755,6 +755,10 @@ class ProjectSession extends ChangeNotifier implements GenerationHost {
     }
   }
 
+  /// Stores picked image data in the project's source folder and returns the new file's path.
+  /// Throws [FormatException] when [bytes] is not a supported image.
+  Future<String> storeSourceImage(Uint8List bytes) => SourceImages.store(sourceFolder, bytes);
+
   /// Copies the image at [filePath] into the project's source folder and returns the copy's path.
   /// Files that already are source images of this project are used as they are.
   Future<String> importSourceImage(String filePath) async {
@@ -907,9 +911,30 @@ class ProjectSession extends ChangeNotifier implements GenerationHost {
 
   GenerationJob? regenerate(CellModel cell) => _queue([cell], 1);
 
-  GenerationJob? _queue(List<CellModel> targets, int repeatCount) {
-    if (targets.isEmpty || _removed) {
+  GenerationJob? _queue(List<CellModel> requested, int repeatCount) {
+    if (requested.isEmpty || _removed) {
       return null;
+    }
+
+    var targets = requested;
+    if (settings.isImg2Img) {
+      final missing = cellsWithoutSource(requested);
+      if (missing.length == requested.length) {
+        env.messenger.warning(
+          requested.length == 1
+              ? '${requested.single.displayName} has no source image. Choose one for the cell or in the project settings.'
+              : 'No source image to start from. Choose a project source image or one per cell.',
+        );
+        return null;
+      }
+
+      if (missing.isNotEmpty) {
+        env.messenger.warning(
+          'Skipped ${missing.length} cell${missing.length == 1 ? '' : 's'} without a source image: '
+          '${missing.map((cell) => cell.displayName).join(', ')}.',
+        );
+        targets = requested.where((cell) => !missing.contains(cell)).toList();
+      }
     }
 
     // Queued jobs work on a snapshot of the cells, so editing a prompt after pressing Generate
