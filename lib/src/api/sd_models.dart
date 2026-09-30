@@ -1,11 +1,28 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import '../core/json_read.dart';
 import '../models/api_platform.dart';
+import '../models/img2img.dart';
 import '../models/lora_selection.dart';
 
-/// Body of `POST /sdapi/v1/txt2img` (also queued through Agent Scheduler and translated into a
-/// ComfyUI workflow). Null fields are omitted from the JSON.
-class Txt2ImgRequest {
-  Txt2ImgRequest({
+/// The source image of an img2img request.
+class Img2ImgSource {
+  const Img2ImgSource({required this.bytes, required this.width, required this.height, required this.fileName});
+
+  final Uint8List bytes;
+  final int width;
+  final int height;
+
+  /// Stable name of the stored source file; used for the ComfyUI upload.
+  final String fileName;
+}
+
+/// Body of `POST /sdapi/v1/txt2img`, or of `/sdapi/v1/img2img` when [source] is set. The same request
+/// is queued through Agent Scheduler and translated into a ComfyUI workflow. Null fields are omitted
+/// from the JSON.
+class GenerationRequest {
+  GenerationRequest({
     this.prompt = '',
     this.negativePrompt,
     this.steps = 20,
@@ -30,6 +47,9 @@ class Txt2ImgRequest {
     this.clipSkip = 1,
     this.selectedLoras = const [],
     this.comfyLoraLoaderType = ComfyLoraLoaderTypes.loraLoader,
+    this.source,
+    this.denoisingStrength = Img2ImgDefaults.denoisingStrength,
+    this.resizeMode = Img2ImgResizeModes.justResize,
   });
 
   String prompt;
@@ -63,13 +83,30 @@ class Txt2ImgRequest {
   List<LoraSelection> selectedLoras;
   String comfyLoraLoaderType;
 
+  /// img2img source image; null for txt2img.
+  Img2ImgSource? source;
+
+  /// img2img only: how much the source image is changed (0 keeps it, 1 replaces it).
+  double denoisingStrength;
+
+  /// img2img only: one of [Img2ImgResizeModes].
+  String resizeMode;
+
+  bool get isImg2Img => source != null;
+  String get webUiPath => isImg2Img ? '/sdapi/v1/img2img' : '/sdapi/v1/txt2img';
+  String get agentSchedulerQueuePath =>
+      isImg2Img ? '/agent-scheduler/v1/queue/img2img' : '/agent-scheduler/v1/queue/txt2img';
+
   Map<String, Object?> toJson() {
     final overrides = <String, Object?>{
       'sd_model_checkpoint': ?sdModelCheckpoint,
       'CLIP_stop_at_last_layers': ?clipStopAtLastLayers,
     };
 
+    final source = this.source;
     return {
+      if (source != null) 'init_images': [base64.encode(source.bytes)],
+      if (source != null) 'resize_mode': Img2ImgResizeModes.webUiIndex(resizeMode),
       'prompt': prompt,
       'negative_prompt': ?negativePrompt,
       'steps': steps,
@@ -88,22 +125,22 @@ class Txt2ImgRequest {
       'hr_second_pass_steps': ?hiresSteps,
       'hr_sampler_name': ?hiresSamplerName,
       'hr_scheduler': ?hiresScheduler,
-      'denoising_strength': ?hiresDenoisingStrength,
+      'denoising_strength': ?(source != null ? denoisingStrength : hiresDenoisingStrength),
       'hr_resize_x': ?hiresResizeX,
       'hr_resize_y': ?hiresResizeY,
     };
   }
 }
 
-class Txt2ImgResponse {
-  const Txt2ImgResponse({this.images = const [], this.info});
+class GenerationResponse {
+  const GenerationResponse({this.images = const [], this.info});
 
   final List<String> images;
   final String? info;
 
-  factory Txt2ImgResponse.fromJson(Object? json) {
+  factory GenerationResponse.fromJson(Object? json) {
     final map = JsonRead.map(json) ?? const <String, Object?>{};
-    return Txt2ImgResponse(
+    return GenerationResponse(
       images: (JsonRead.list(map['images']) ?? const []).whereType<String>().toList(),
       info: map['info'] is String ? map['info'] as String : null,
     );
@@ -210,6 +247,7 @@ class ComfyObjectInfoMetadata {
     this.loraNames = const [],
     this.availableLoraLoaderTypes = const [ComfyLoraLoaderTypes.loraLoader],
     this.supportsClipSetLastLayer = false,
+    this.imageScaleMethods = const [],
   });
 
   final List<String> checkpointNames;
@@ -220,6 +258,9 @@ class ComfyObjectInfoMetadata {
   final List<String> availableLoraLoaderTypes;
   final bool supportsClipSetLastLayer;
 
+  /// `upscale_method` options of the `ImageScale` node (used to fit img2img source images).
+  final List<String> imageScaleMethods;
+
   Map<String, Object?> toJson() => {
     'checkpointNames': checkpointNames,
     'samplerNames': samplerNames,
@@ -228,6 +269,7 @@ class ComfyObjectInfoMetadata {
     'loraNames': loraNames,
     'availableLoraLoaderTypes': availableLoraLoaderTypes,
     'supportsClipSetLastLayer': supportsClipSetLastLayer,
+    'imageScaleMethods': imageScaleMethods,
   };
 
   static ComfyObjectInfoMetadata? fromJson(Object? json) {
@@ -248,6 +290,7 @@ class ComfyObjectInfoMetadata {
       loraNames: strings('loraNames'),
       availableLoraLoaderTypes: loaderTypes.isEmpty ? const [ComfyLoraLoaderTypes.loraLoader] : loaderTypes,
       supportsClipSetLastLayer: JsonRead.boolean(map, 'supportsClipSetLastLayer') ?? false,
+      imageScaleMethods: strings('imageScaleMethods'),
     );
   }
 }

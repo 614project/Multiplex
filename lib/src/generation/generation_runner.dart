@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
+import 'package:path/path.dart' as p;
 
 import '../api/sd_client.dart';
 import '../api/sd_models.dart';
@@ -10,7 +11,10 @@ import '../core/ids.dart';
 import '../core/image_signature.dart';
 import '../core/option_lists.dart';
 import '../core/prompt_composer.dart';
+import '../models/img2img.dart';
 import '../models/lora_selection.dart';
+import '../services/file_io.dart';
+import '../services/source_images.dart';
 import '../state/app_messenger.dart';
 import 'generation_context.dart';
 
@@ -40,8 +44,8 @@ abstract interface class GenerationHost {
 
 /// Runs one queued job against WebUI (standard, polling or Agent Scheduler) or ComfyUI.
 ///
-/// This is a direct port of the WebuiMultiflex generation loops, including the proxy-safe recovery of
-/// dropped txt2img responses, Agent Scheduler/ComfyUI prefetching and server-side cleanup of work that
+/// This is a direct port of the WebuiMultiflex generation loops (extended with img2img), including the
+/// proxy-safe recovery of dropped image responses, Agent Scheduler/ComfyUI prefetching and server-side cleanup of work that
 /// was queued by a job which is force-stopped or times out.
 class GenerationRunner {
   GenerationRunner(this.host, this.client, {this.pollInterval = const Duration(seconds: 1)});
@@ -57,6 +61,10 @@ class GenerationRunner {
   /// A ComfyUI client id shared by every prompt of this runner.
   final String comfyClientId = newId();
 
+  // Per job: img2img source images read from disk, and their names in ComfyUI's input folder.
+  final Map<String, Img2ImgSource> _sources = {};
+  final Map<String, String> _comfyUploads = {};
+
   bool get _isStopRequested => host.stopAfterCurrentImageRequested || host.forceInterruptRequested;
   bool get _isSoftStopRequested => host.stopAfterCurrentImageRequested && !host.forceInterruptRequested;
 
@@ -66,13 +74,76 @@ class GenerationRunner {
       host.waitForWebUiIdle = false;
     }
 
-    if (context.platform.isComfyUi) {
-      await _runComfy(context, token);
-    } else if (context.isAgentSchedulerMode) {
-      await _runAgentScheduler(context, token);
-    } else {
-      await _runSequential(context, token);
+    try {
+      if (context.platform.isComfyUi) {
+        await _runComfy(context, token);
+      } else if (context.isAgentSchedulerMode) {
+        await _runAgentScheduler(context, token);
+      } else {
+        await _runSequential(context, token);
+      }
+    } finally {
+      _sources.clear();
+      _comfyUploads.clear();
     }
+  }
+
+  /// Builds the request for [cell], reading its img2img source image first when the job needs one.
+  Future<GenerationRequest> _prepareRequest(GenerationContext context, CellSnapshot cell) async =>
+      buildRequest(context, cell, source: await _loadSource(context, cell));
+
+  Future<Img2ImgSource?> _loadSource(GenerationContext context, CellSnapshot cell) async {
+    if (!context.isImg2Img) {
+      return null;
+    }
+
+    final path = context.sourceImageFor(cell);
+    if (path == null) {
+      throw ApiException(
+        '${cell.displayName} has no source image. Choose one for the cell or in the project settings.',
+      );
+    }
+
+    final cached = _sources[path];
+    if (cached != null) {
+      return cached;
+    }
+
+    final bytes = await FileIo.tryReadBytes(path);
+    if (bytes == null) {
+      throw ApiException('The source image of ${cell.displayName} was not found (${p.basename(path)}).');
+    }
+
+    final info = SourceImages.readInfo(bytes);
+    if (info == null) {
+      throw ApiException('The source image of ${cell.displayName} is not a PNG, JPEG, WebP or BMP image.');
+    }
+
+    return _sources[path] = Img2ImgSource(
+      bytes: bytes,
+      width: info.width,
+      height: info.height,
+      fileName: p.basename(path),
+    );
+  }
+
+  /// Uploads the source image once per job and returns its name in ComfyUI's input folder.
+  Future<String?> _uploadComfySource(GenerationContext context, Img2ImgSource? source, CancellationToken token) async {
+    if (source == null) {
+      return null;
+    }
+
+    final uploaded = _comfyUploads[source.fileName];
+    if (uploaded != null) {
+      return uploaded;
+    }
+
+    return _comfyUploads[source.fileName] = await client.uploadComfyImage(
+      context.apiBaseUrl,
+      source.bytes,
+      'multiplex-${source.fileName}',
+      token,
+    );
   }
 
   CancellationSource _requestCancellation(GenerationContext context, CancellationToken token) {
@@ -105,11 +176,11 @@ class GenerationRunner {
       }
 
       host.setCellBusy(cell.id, true);
-      Txt2ImgRequest? request;
+      GenerationRequest? request;
       final requestSource = _requestCancellation(context, token);
       try {
         token.throwIfCancelled();
-        request = buildRequest(context, cell);
+        request = await _prepareRequest(context, cell);
         final bytes = await _generateWebUi(context, request, cell, current, total, requestSource.token);
         if (bytes == null) {
           host.report('No image data returned from generation.', MessageSeverity.warning);
@@ -143,7 +214,7 @@ class GenerationRunner {
 
   Future<Uint8List?> _generateWebUi(
     GenerationContext context,
-    Txt2ImgRequest request,
+    GenerationRequest request,
     CellSnapshot cell,
     int current,
     int total,
@@ -151,7 +222,7 @@ class GenerationRunner {
   ) async {
     final polling = context.isPollingMode;
     if (!polling && !host.livePreviewEnabled) {
-      final response = await client.txt2img(context.apiBaseUrl, request, token);
+      final response = await client.generate(context.apiBaseUrl, request, token);
       return ImageSignature.tryDecodeBase64(response.firstImage);
     }
 
@@ -159,7 +230,7 @@ class GenerationRunner {
     final expectTwoPass = request.enableHiresFix == true;
     final tracker = WebUiRecoveryTracker(minimumRecoverablePixelCount(request));
     var completed = false;
-    final generation = client.txt2img(context.apiBaseUrl, request, token);
+    final generation = client.generate(context.apiBaseUrl, request, token);
     final done = generation.then<void>((_) {}, onError: (Object _) {}).whenComplete(() => completed = true);
 
     while (!completed) {
@@ -538,7 +609,7 @@ class GenerationRunner {
     CancellationToken token,
   ) async {
     final cell = context.targets[index];
-    final request = buildRequest(context, cell);
+    final request = await _prepareRequest(context, cell);
     host.setStatus('Queueing Agent Scheduler... (${index + 1}/$total)');
     final forcedTaskId = ensureTaskId(request);
 
@@ -553,7 +624,7 @@ class GenerationRunner {
 
     String taskId;
     try {
-      taskId = await client.queueAgentSchedulerTxt2Img(context.apiBaseUrl, request, token);
+      taskId = await client.queueAgentScheduler(context.apiBaseUrl, request, token);
     } on HttpStatusException catch (error) {
       if (error.statusCode == 404) {
         throw const ApiException(
@@ -776,13 +847,14 @@ class GenerationRunner {
 
       final cell = context.targets[index];
       host.setStatus('Queueing ComfyUI... (${index + 1}/$total)');
-      final request = buildRequest(context, cell);
-      final promptId = await client.queueComfyTxt2Img(
+      final request = await _prepareRequest(context, cell);
+      final promptId = await client.queueComfy(
         context.apiBaseUrl,
         request,
         metadata,
         queueToken,
         clientId: comfyClientId,
+        sourceImageName: await _uploadComfySource(context, request.source, queueToken),
       );
       if (!advanceOnFailure) {
         nextIndexToQueue++;
@@ -936,18 +1008,20 @@ class GenerationRunner {
     host.report('Generation failed in ${context.projectName}: ${SdClient.describeError(error)}', MessageSeverity.error);
   }
 
-  static String ensureTaskId(Txt2ImgRequest request) {
+  static String ensureTaskId(GenerationRequest request) {
     final existing = request.forceTaskId;
     if (existing != null && existing.trim().isNotEmpty) {
       return existing;
     }
 
-    final taskId = 'task(multiplex-txt2img-${newId()})';
+    final taskId = newTaskId(request.isImg2Img);
     request.forceTaskId = taskId;
     return taskId;
   }
 
-  static int minimumRecoverablePixelCount(Txt2ImgRequest request) =>
+  static String newTaskId(bool img2img) => 'task(multiplex-${img2img ? 'img2img' : 'txt2img'}-${newId()})';
+
+  static int minimumRecoverablePixelCount(GenerationRequest request) =>
       request.enableHiresFix == true ? request.width * request.height + 1 : 0;
 
   static bool isRecoverableProxyError(Object error) {
@@ -1026,32 +1100,38 @@ class GenerationRunner {
         : 'the available progress APIs';
 
     if (expectTwoPass && !tracker.sawExpectedFinalPass) {
-      return 'The proxy dropped the final txt2img response before Hires.fix reached a recoverable second-pass preview image.';
+      return 'The proxy dropped the final image response before Hires.fix reached a recoverable second-pass preview image.';
     }
 
     return tracker.progressApiAvailable
-        ? 'The proxy dropped the final txt2img response, and $modeLabel could not recover a final preview from $source.'
-        : 'The proxy dropped the final txt2img response, and the progress APIs were not available for recovery.';
+        ? 'The proxy dropped the final image response, and $modeLabel could not recover a final preview from $source.'
+        : 'The proxy dropped the final image response, and the progress APIs were not available for recovery.';
   }
 
   /// Builds the WebUI payload for [cell]; ComfyUI converts the same request into a workflow.
-  static Txt2ImgRequest buildRequest(GenerationContext context, CellSnapshot cell) {
+  ///
+  /// In img2img jobs [source] is the cell's source image. Without it (e.g. for a preview) the
+  /// request describes the img2img parameters but has no image, so it would run as txt2img.
+  static GenerationRequest buildRequest(GenerationContext context, CellSnapshot cell, {Img2ImgSource? source}) {
+    final img2img = context.isImg2Img;
     final steps = cell.overrideSteps ?? context.steps;
     final cfg = cell.overrideCfgScale ?? context.cfgScale;
-    final width = cell.overrideWidth ?? context.width;
-    final height = cell.overrideHeight ?? context.height;
+    final sourceSized = img2img && context.useSourceImageSize && source != null;
+    final width = cell.overrideWidth ?? (sourceSized ? roundGenerationDimension(source.width) : context.width);
+    final height = cell.overrideHeight ?? (sourceSized ? roundGenerationDimension(source.height) : context.height);
     final prompt = PromptComposer.composePositivePrompt(context.globalCommonPrompt, context.commonPrompt, cell.prompt);
     final negative = PromptComposer.composeNegativePrompt(
       context.globalNegativePrompt,
       context.negativePrompt,
       cell.overrideNegativePrompt,
     );
-    final hires = context.enableHiresFix;
+    // Hires.fix is a txt2img feature; img2img requests ignore it.
+    final hires = context.enableHiresFix && !img2img;
     final scheduler = context.scheduler.trim().isEmpty
         ? null
         : OptionLists.normalizeSchedulerForRequest(context.platform, context.scheduler);
 
-    return Txt2ImgRequest(
+    return GenerationRequest(
       prompt: context.platform.isWebUi ? applyWebUiLorasToPrompt(prompt, context.selectedLoras) : prompt,
       negativePrompt: negative.trim().isEmpty ? null : negative,
       clipSkip: context.clipSkip,
@@ -1064,7 +1144,7 @@ class GenerationRunner {
       selectedLoras: LoraSelection.normalize(context.selectedLoras),
       comfyLoraLoaderType: context.comfyLoraLoaderType,
       seed: context.seed,
-      forceTaskId: context.platform.isWebUi ? 'task(multiplex-txt2img-${newId()})' : null,
+      forceTaskId: context.platform.isWebUi ? newTaskId(img2img) : null,
       enableHiresFix: hires ? true : null,
       hiresScale: hires ? (context.hiresScale < 1 ? 1 : context.hiresScale) : null,
       hiresUpscaler: hires && context.hiresUpscaler.trim().isNotEmpty ? context.hiresUpscaler : null,
@@ -1076,6 +1156,9 @@ class GenerationRunner {
       hiresResizeY: hires ? (context.hiresResizeHeight < 0 ? 0 : context.hiresResizeHeight) : null,
       sdModelCheckpoint: context.checkpointModel.trim().isEmpty ? null : context.checkpointModel,
       clipStopAtLastLayers: context.clipSkip > 0 ? context.clipSkip : null,
+      source: img2img ? source : null,
+      denoisingStrength: (cell.overrideDenoisingStrength ?? context.denoisingStrength).clamp(0.0, 1.0).toDouble(),
+      resizeMode: context.resizeMode,
     );
   }
 
@@ -1190,7 +1273,7 @@ class _AgentQueued {
   _AgentQueued(this.cell, this.request, this.queueTaskId, this.forcedTaskId, this.position);
 
   final CellSnapshot cell;
-  final Txt2ImgRequest request;
+  final GenerationRequest request;
   final String queueTaskId;
   final String forcedTaskId;
   final int position;

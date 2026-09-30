@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import '../models/img2img.dart';
 import '../models/project_data.dart';
 import '../models/project_settings.dart';
 import 'app_log.dart';
@@ -93,16 +94,19 @@ class ProjectStore {
     return data;
   }
 
-  /// Copies a project, including its generated images. Cell ids are kept so the stored image
+  /// Copies a project, including its generated and source images. Cell ids are kept so the stored image
   /// paths stay valid inside the new folder.
   Future<ProjectData> clone(ProjectData source) async {
     final metadata = ProjectMetadata.create('${source.metadata.name} Copy');
     final clone = ProjectData.fromJson(source.toJson(), fallbackId: metadata.id);
     final data = ProjectData(metadata: metadata, settings: clone.settings, cells: clone.cells);
 
-    final sourceCells = Directory(p.join(paths.projectFolder(source.metadata.id), 'cells'));
-    if (await sourceCells.exists()) {
-      await FileIo.copyDirectory(sourceCells, Directory(p.join(paths.projectFolder(metadata.id), 'cells')));
+    // Generated images and img2img source images; relative paths stay valid in the new folder.
+    for (final folder in ['cells', Img2ImgDefaults.sourceFolderName]) {
+      final from = Directory(p.join(paths.projectFolder(source.metadata.id), folder));
+      if (await from.exists()) {
+        await FileIo.copyDirectory(from, Directory(p.join(paths.projectFolder(metadata.id), folder)));
+      }
     }
 
     await save(data);

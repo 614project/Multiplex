@@ -4,11 +4,13 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../api/sd_client.dart';
+import '../core/path_safety.dart';
 import '../models/app_preferences.dart';
 import '../services/app_log.dart';
 import '../services/app_paths.dart';
 import '../services/autocomplete_service.dart';
 import '../services/comfy_metadata_cache.dart';
+import '../services/file_io.dart';
 import '../services/preferences_store.dart';
 import '../services/project_store.dart';
 import '../services/project_transfer.dart';
@@ -233,6 +235,7 @@ class AppState extends ChangeNotifier implements SessionEnvironment {
         final sessions = <ProjectSession>[];
         for (final project in imported) {
           final data = await store.create(project.name, settings: project.settings, cells: project.cells);
+          await _writeSourceImages(data.metadata.id, project.sourceImages);
           sessions.add(ProjectSession(this, data));
         }
 
@@ -253,7 +256,20 @@ class AppState extends ChangeNotifier implements SessionEnvironment {
 
   Future<String> exportAllProjects() async {
     await flush();
-    return ProjectTransfer.serializeProjects(_projects.map((project) => project.snapshot()));
+    return ProjectTransfer.serializeProjects(
+      _projects.map((project) => project.snapshot()),
+      sourceImages: {for (final project in _projects) project.id: await project.readSourceImages()},
+    );
+  }
+
+  Future<void> _writeSourceImages(String projectId, Map<String, Uint8List> images) async {
+    final folder = paths.projectFolder(projectId);
+    for (final MapEntry(:key, :value) in images.entries) {
+      final target = PathSafety.tryResolveWithinRoot(folder, key);
+      if (target != null) {
+        await FileIo.writeBytesAtomic(target, value);
+      }
+    }
   }
 
   /// Writes pending project and preference changes (called when the app is paused or closed).

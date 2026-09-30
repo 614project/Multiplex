@@ -65,7 +65,7 @@ abstract final class ProjectActions {
   static Future<void> export(BuildContext context, ProjectSession session) async {
     final app = _app(context);
     await session.saveNow();
-    final json = ProjectTransfer.serializeProject(session.snapshot());
+    final json = ProjectTransfer.serializeProject(session.snapshot(), sourceImages: await session.readSourceImages());
     final fileName = '${PathSafety.sanitizeFileName(session.name, fallback: 'Project')}.json';
     if (!context.mounted) {
       return;

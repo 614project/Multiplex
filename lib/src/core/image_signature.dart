@@ -7,7 +7,10 @@ abstract final class ImageSignature {
 
   /// Picks the file extension from the image signature, because WebUI can be configured to return
   /// JPEG or WebP and recovered previews are not guaranteed to be PNG.
-  static String detectExtension(List<int> bytes) {
+  static String detectExtension(List<int> bytes) => tryDetectExtension(bytes) ?? defaultExtension;
+
+  /// The extension matching the image signature, or null when [bytes] is not a PNG, JPEG, WebP or BMP.
+  static String? tryDetectExtension(List<int> bytes) {
     if (bytes.length >= 8 &&
         bytes[0] == 0x89 &&
         bytes[1] == 0x50 &&
@@ -40,7 +43,7 @@ abstract final class ImageSignature {
       return '.bmp';
     }
 
-    return defaultExtension;
+    return null;
   }
 
   /// Reads width and height from a PNG header, or null for other formats.

@@ -1,5 +1,7 @@
 import '../core/json_read.dart';
+import '../core/path_safety.dart';
 import 'api_platform.dart';
+import 'img2img.dart';
 import 'lora_selection.dart';
 
 /// Shared generation settings of a project. Values that mean "use the app default" are stored as
@@ -34,6 +36,11 @@ class ProjectSettings {
     this.hiresDenoisingStrength = 0.7,
     this.hiresResizeWidth = 0,
     this.hiresResizeHeight = 0,
+    this.generationType = GenerationType.txt2img,
+    this.sourceImagePath = '',
+    this.denoisingStrength = Img2ImgDefaults.denoisingStrength,
+    this.resizeMode = Img2ImgResizeModes.justResize,
+    this.useSourceImageSize = true,
   }) : selectedLoras = selectedLoras ?? <LoraSelection>[];
 
   String apiBaseUrl;
@@ -73,6 +80,20 @@ class ProjectSettings {
   int hiresResizeWidth;
   int hiresResizeHeight;
 
+  GenerationType generationType;
+
+  /// The project's source image for img2img, relative to the project folder; empty when unset.
+  /// Cells can use their own source image instead.
+  String sourceImagePath;
+  double denoisingStrength;
+  String resizeMode;
+
+  /// img2img output size follows each source image (rounded to a multiple of 8) instead of
+  /// [width] × [height]. Cell size overrides still win.
+  bool useSourceImageSize;
+
+  bool get isImg2Img => generationType.isImg2Img;
+
   ProjectSettings copy() => ProjectSettings.fromJson(toJson());
 
   /// Clamps values into the ranges the generators accept.
@@ -98,6 +119,10 @@ class ProjectSettings {
     hiresDenoisingStrength = _finite(hiresDenoisingStrength, 0.7).clamp(0.0, 1.0).toDouble();
     hiresResizeWidth = hiresResizeWidth < 0 ? 0 : hiresResizeWidth;
     hiresResizeHeight = hiresResizeHeight < 0 ? 0 : hiresResizeHeight;
+    // Project files can be imported from anywhere, so the source image must stay inside the project.
+    sourceImagePath = PathSafety.isSafeRelativePath(sourceImagePath) ? sourceImagePath.replaceAll('\\', '/') : '';
+    denoisingStrength = _finite(denoisingStrength, Img2ImgDefaults.denoisingStrength).clamp(0.0, 1.0).toDouble();
+    resizeMode = Img2ImgResizeModes.normalize(resizeMode);
   }
 
   Map<String, Object?> toJson() => {
@@ -129,6 +154,11 @@ class ProjectSettings {
     'hiresDenoisingStrength': hiresDenoisingStrength,
     'hiresResizeWidth': hiresResizeWidth,
     'hiresResizeHeight': hiresResizeHeight,
+    'generationType': generationType.id,
+    'sourceImagePath': sourceImagePath,
+    'denoisingStrength': denoisingStrength,
+    'resizeMode': resizeMode,
+    'useSourceImageSize': useSourceImageSize,
   };
 
   /// Reads Multiplex project files as well as the `Settings` object of WebuiMultiflex exports.
@@ -168,6 +198,11 @@ class ProjectSettings {
           JsonRead.number(map, 'hiresDenoisingStrength')?.toDouble() ?? defaults.hiresDenoisingStrength,
       hiresResizeWidth: JsonRead.integer(map, 'hiresResizeWidth') ?? 0,
       hiresResizeHeight: JsonRead.integer(map, 'hiresResizeHeight') ?? 0,
+      generationType: GenerationType.parse(JsonRead.string(map, 'generationType')),
+      sourceImagePath: JsonRead.string(map, 'sourceImagePath') ?? '',
+      denoisingStrength: JsonRead.number(map, 'denoisingStrength')?.toDouble() ?? defaults.denoisingStrength,
+      resizeMode: JsonRead.string(map, 'resizeMode') ?? defaults.resizeMode,
+      useSourceImageSize: JsonRead.boolean(map, 'useSourceImageSize') ?? defaults.useSourceImageSize,
     );
     settings.normalize();
     return settings;

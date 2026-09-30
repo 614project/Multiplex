@@ -7,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:image/image.dart' as img;
 import 'package:multiplex/src/models/api_platform.dart';
 import 'package:multiplex/src/models/image_metadata.dart';
+import 'package:multiplex/src/models/img2img.dart';
 import 'package:multiplex/src/models/lora_selection.dart';
 import 'package:multiplex/src/models/project_data.dart';
 import 'package:multiplex/src/models/project_settings.dart';
@@ -68,6 +69,21 @@ void main() {
       expect(metadata.enableHiresFix, isTrue);
       expect(metadata.loras, ['style']);
       expect(metadata.sizeText, '1024 × 1536 (Hires.fix from 512 × 768)');
+    });
+
+    test('recognizes img2img images by a denoising strength without Hires.fix keys', () {
+      const infotext =
+          'a cat in watercolor\n'
+          'Steps: 20, Sampler: Euler a, CFG scale: 7, Seed: 1, Size: 512x512, Denoising strength: 0.55, Version: v1.10.1';
+      final metadata = read(
+        pngWithChunks([
+          ('tEXt', [...latin1.encode('parameters'), 0, ...utf8.encode(infotext)]),
+        ]),
+      );
+      expect(metadata.isImg2Img, isTrue);
+      expect(metadata.denoisingStrength, 0.55);
+      expect(metadata.enableHiresFix, isNot(isTrue));
+      expect(metadata.hiresDenoisingStrength, isNull);
     });
 
     test('reads compressed zTXt and iTXt chunks', () {
@@ -155,6 +171,24 @@ void main() {
       expect(project.cells.last.overrideSteps, 40);
     });
 
+    test('keeps img2img settings when round-tripping', () {
+      final settings = ProjectSettings(
+        generationType: GenerationType.img2img,
+        sourceImagePath: r'sources\source-1.png',
+        denoisingStrength: 1.7,
+        resizeMode: 'crop AND resize',
+        useSourceImageSize: false,
+      )..normalize();
+      final restored = ProjectSettings.fromJson(settings.toJson());
+      expect(restored.isImg2Img, isTrue);
+      expect(restored.sourceImagePath, 'sources/source-1.png');
+      expect(restored.denoisingStrength, 1.0);
+      expect(restored.resizeMode, Img2ImgResizeModes.cropAndResize);
+      expect(restored.useSourceImageSize, isFalse);
+      expect(ProjectSettings.fromJson({'sourceImagePath': '/etc/passwd'}).sourceImagePath, isEmpty);
+      expect(ProjectSettings.fromJson(const {}).isImg2Img, isFalse);
+    });
+
     test('exports without credentials and round-trips', () {
       final data = ProjectData(
         metadata: ProjectMetadata.create('Landscapes'),
@@ -174,6 +208,23 @@ void main() {
 
       final bundle = ProjectTransfer.serializeProjects([data, data]);
       expect(ProjectTransfer.deserialize(bundle), hasLength(2));
+    });
+
+    test('imports drop source image references that leave the project or are missing', () {
+      final json = jsonEncode({
+        'Name': 'Untrusted',
+        'Settings': {'GenerationType': 'img2img', 'SourceImagePath': '../../etc/passwd'},
+        'Cells': [
+          {'Prompt': 'a', 'SourceImagePath': 'sources/missing.png'},
+        ],
+        'SourceImages': {'../outside.png': base64.encode(Uint8List(4)), 'sources/bad.png': 'not base64!'},
+      });
+
+      final project = ProjectTransfer.deserialize(json).single;
+      expect(project.settings.isImg2Img, isTrue);
+      expect(project.settings.sourceImagePath, isEmpty);
+      expect(project.cells.single.sourceImagePath, isNull);
+      expect(project.sourceImages, isEmpty);
     });
 
     test('rejects empty and unsupported files', () {

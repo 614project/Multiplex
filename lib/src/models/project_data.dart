@@ -1,5 +1,6 @@
 import '../core/ids.dart';
 import '../core/json_read.dart';
+import '../core/path_safety.dart';
 import 'project_settings.dart';
 
 class ProjectMetadata {
@@ -61,6 +62,8 @@ class CellData {
     this.overrideNegativePrompt = '',
     this.lastImagePath,
     this.representativeImagePath,
+    this.sourceImagePath,
+    this.overrideDenoisingStrength,
     DateTime? updatedAt,
   }) : updatedAt = updatedAt ?? DateTime.now();
 
@@ -75,6 +78,10 @@ class CellData {
   String overrideNegativePrompt;
   String? lastImagePath;
   String? representativeImagePath;
+
+  /// The cell's own img2img source image (relative to the project folder); null uses the project's.
+  String? sourceImagePath;
+  double? overrideDenoisingStrength;
   DateTime updatedAt;
 
   Map<String, Object?> toJson() => {
@@ -89,6 +96,8 @@ class CellData {
     'overrideNegativePrompt': overrideNegativePrompt,
     'lastImagePath': lastImagePath,
     'representativeImagePath': representativeImagePath,
+    'sourceImagePath': sourceImagePath,
+    'overrideDenoisingStrength': overrideDenoisingStrength,
     'updatedAt': updatedAt.toUtc().toIso8601String(),
   };
 
@@ -108,11 +117,19 @@ class CellData {
       overrideNegativePrompt: JsonRead.string(map, 'overrideNegativePrompt') ?? '',
       lastImagePath: JsonRead.string(map, 'lastImagePath'),
       representativeImagePath: JsonRead.string(map, 'representativeImagePath'),
+      sourceImagePath: _safeRelative(JsonRead.string(map, 'sourceImagePath')),
+      overrideDenoisingStrength: _unitInterval(JsonRead.number(map, 'overrideDenoisingStrength')?.toDouble()),
       updatedAt: JsonRead.dateTime(map, 'updatedAt'),
     );
   }
 
   static int? _positiveInt(int? value) => value != null && value > 0 ? value : null;
+
+  static String? _safeRelative(String? value) =>
+      PathSafety.isSafeRelativePath(value) ? value!.replaceAll('\\', '/') : null;
+
+  static double? _unitInterval(double? value) =>
+      value != null && !value.isNaN && !value.isInfinite ? value.clamp(0.0, 1.0).toDouble() : null;
 
   static double? _positiveDouble(double? value) =>
       value != null && !value.isNaN && !value.isInfinite && value > 0 ? value : null;

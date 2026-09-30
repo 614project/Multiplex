@@ -12,18 +12,22 @@ class FakeSdServer {
   FakeSdServer({
     this.generationTime = const Duration(milliseconds: 120),
     this.imageSize = 64,
-    this.dropFinalTxt2ImgResponse = false,
+    this.dropFinalGenerationResponse = false,
   });
 
   final Duration generationTime;
   final int imageSize;
 
   /// Simulates a reverse proxy that answers 504 although WebUI finished the image.
-  bool dropFinalTxt2ImgResponse;
+  bool dropFinalGenerationResponse;
 
   final List<String> log = [];
   final List<Map<String, Object?>> txt2imgRequests = [];
+  final List<Map<String, Object?>> img2imgRequests = [];
   final List<Map<String, Object?>> comfyPrompts = [];
+
+  /// Files uploaded to ComfyUI's input folder through `/upload/image`.
+  final Map<String, Uint8List> comfyInputs = {};
   int interruptCount = 0;
 
   // WebUI state
@@ -48,6 +52,10 @@ class FakeSdServer {
   Future<http.Response> handle(http.Request request) async {
     final path = request.url.path;
     log.add('${request.method} $path');
+    if ((request.headers['content-type'] ?? '').startsWith('multipart/form-data')) {
+      return path == '/upload/image' ? _uploadImage(request) : _json({'detail': 'Not Found'}, 404);
+    }
+
     final body = request.body.isEmpty ? null : jsonDecode(request.body);
     switch ((request.method, path)) {
       // --- WebUI -----------------------------------------------------------------------------
@@ -80,7 +88,9 @@ class FakeSdServer {
           {'name': 'Latent (nearest-exact)'},
         ]);
       case ('POST', '/sdapi/v1/txt2img'):
-        return _txt2img(body! as Map<String, Object?>);
+        return _generate(body! as Map<String, Object?>, txt2imgRequests);
+      case ('POST', '/sdapi/v1/img2img'):
+        return _generate(body! as Map<String, Object?>, img2imgRequests);
       case ('GET', '/sdapi/v1/progress'):
         return _classicProgress(request.url.queryParameters['skip_current_image'] != 'true');
       case ('POST', '/internal/progress'):
@@ -94,14 +104,15 @@ class FakeSdServer {
           'paths': {
             '/sdapi/v1/txt2img': {},
             '/agent-scheduler/v1/queue/txt2img': {},
+            '/agent-scheduler/v1/queue/img2img': {},
             '/agent-scheduler/v1/results/{id}': {},
           },
         });
       // --- Agent Scheduler ----------------------------------------------------------------------
-      case ('POST', '/agent-scheduler/v1/queue/txt2img'):
+      case ('POST', '/agent-scheduler/v1/queue/txt2img' || '/agent-scheduler/v1/queue/img2img'):
         final taskId = 'agent-${_agentTasks.length + 1}';
         final requestJson = body! as Map<String, Object?>;
-        txt2imgRequests.add(requestJson);
+        (path.endsWith('img2img') ? img2imgRequests : txt2imgRequests).add(requestJson);
         _agentTasks[taskId] = _Task(taskId, requestJson);
         _agentQueue.add(taskId);
         unawaited(_runAgentWorker());
@@ -140,6 +151,27 @@ class FakeSdServer {
         final payload = body! as Map<String, Object?>;
         final promptId = (payload['prompt_id'] as String?) ?? 'comfy-${_comfyTasks.length + 1}';
         final graph = payload['prompt']! as Map<String, Object?>;
+        for (final node in graph.values.cast<Map<String, Object?>>()) {
+          final image = (node['inputs']! as Map<String, Object?>)['image'];
+          if (node['class_type'] == 'LoadImage' && !comfyInputs.containsKey(image)) {
+            return _json({
+              'error': {
+                'type': 'prompt_outputs_failed_validation',
+                'message': 'Prompt outputs failed validation',
+                'details': '',
+              },
+              'node_errors': {
+                'LoadImage': {
+                  'errors': [
+                    {'message': 'Invalid image file', 'details': 'image: $image'},
+                  ],
+                  'class_type': 'LoadImage',
+                },
+              },
+            }, 400);
+          }
+        }
+
         comfyPrompts.add(graph);
         _comfyTasks[promptId] = _Task(promptId, graph);
         _comfyQueue.add(promptId);
@@ -218,8 +250,9 @@ class FakeSdServer {
 
   // --- WebUI ---------------------------------------------------------------------------------------
 
-  Future<http.Response> _txt2img(Map<String, Object?> request) async {
-    txt2imgRequests.add(request);
+  /// txt2img or img2img (the request carries `init_images`).
+  Future<http.Response> _generate(Map<String, Object?> request, List<Map<String, Object?>> record) async {
+    record.add(request);
     final task = _Task('webui', request)..status = 'running';
     task.taskId = request['force_task_id'] as String?;
     _activeWebUiTask = task;
@@ -234,7 +267,7 @@ class FakeSdServer {
       });
     }
 
-    if (dropFinalTxt2ImgResponse) {
+    if (dropFinalGenerationResponse) {
       return http.Response('<html>504 Gateway Time-out</html>', 504, reasonPhrase: 'Gateway Timeout');
     }
 
@@ -390,7 +423,69 @@ class FakeSdServer {
     'CLIPSetLastLayer': {
       'input': {'required': {}},
     },
+    'ImageScale': {
+      'input': {
+        'required': {
+          'upscale_method': [
+            ['nearest-exact', 'bilinear', 'area', 'bicubic', 'lanczos'],
+            {},
+          ],
+        },
+      },
+    },
   };
+
+  /// ComfyUI `/upload/image`: stores the multipart `image` field in the input folder.
+  http.Response _uploadImage(http.Request request) {
+    final boundary = RegExp('boundary=([^;]+)').firstMatch(request.headers['content-type']!)!.group(1)!;
+    for (final part in _multipartParts(request.bodyBytes, boundary)) {
+      final name = RegExp('filename="([^"]*)"').firstMatch(part.headers)?.group(1);
+      if (RegExp('name="image"').hasMatch(part.headers) && name != null) {
+        comfyInputs[name] = part.body;
+        return _json({'name': name, 'subfolder': '', 'type': 'input'});
+      }
+    }
+
+    return _json({'error': 'No image uploaded'}, 400);
+  }
+
+  static List<({String headers, Uint8List body})> _multipartParts(Uint8List body, String boundary) {
+    final delimiter = latin1.encode('--$boundary');
+    final parts = <({String headers, Uint8List body})>[];
+    var start = _indexOf(body, delimiter, 0);
+    while (start >= 0) {
+      final contentStart = start + delimiter.length + 2;
+      final next = _indexOf(body, delimiter, contentStart);
+      if (next < 0) {
+        break;
+      }
+
+      final part = body.sublist(contentStart, next - 2);
+      final headerEnd = _indexOf(part, latin1.encode('\r\n\r\n'), 0);
+      if (headerEnd >= 0) {
+        parts.add((headers: latin1.decode(part.sublist(0, headerEnd)), body: part.sublist(headerEnd + 4)));
+      }
+
+      start = next;
+    }
+
+    return parts;
+  }
+
+  static int _indexOf(List<int> haystack, List<int> needle, int from) {
+    outer:
+    for (var index = from; index <= haystack.length - needle.length; index++) {
+      for (var offset = 0; offset < needle.length; offset++) {
+        if (haystack[index + offset] != needle[offset]) {
+          continue outer;
+        }
+      }
+
+      return index;
+    }
+
+    return -1;
+  }
 
   // --- Rendering -----------------------------------------------------------------------------------
 
@@ -414,6 +509,9 @@ class FakeSdServer {
   }
 
   Uint8List _renderWebUiImage(Map<String, Object?> request) {
+    final initImages = request['init_images'] as List<Object?>?;
+    final source = initImages == null || initImages.isEmpty ? null : base64.decode(initImages.first! as String);
+    final denoise = (request['denoising_strength'] as num?)?.toDouble() ?? 0.75;
     final prompt = request['prompt'] as String? ?? '';
     final negative = request['negative_prompt'] as String? ?? '';
     final seed = (request['seed'] as num?)?.toInt() ?? -1;
@@ -432,31 +530,61 @@ class FakeSdServer {
       'Seed: ${seed < 0 ? Random(prompt.hashCode).nextInt(1 << 31) : seed}, Size: ${width}x$height, '
       'Model: $model, Clip skip: ${overrides?['CLIP_stop_at_last_layers'] ?? 1}',
     );
-    return _render(prompt, {'parameters': parameters.toString()}, width, height);
+    if (source != null) {
+      parameters.write(', Denoising strength: $denoise');
+    }
+
+    return _render(prompt, {'parameters': parameters.toString()}, width, height, source: source, denoise: denoise);
   }
 
   Uint8List _renderComfyImage(Map<String, Object?> graph) {
     var text = '';
     var width = 512;
     var height = 512;
+    Uint8List? source;
+    var denoise = 1.0;
+    var padding = (x: 0, y: 0);
     for (final node in graph.values.cast<Map<String, Object?>>()) {
       final inputs = node['inputs']! as Map<String, Object?>;
-      if (node['class_type'] == 'CLIPTextEncode' && text.isEmpty) {
-        text = inputs['text'] as String? ?? '';
-      }
-
-      if (node['class_type'] == 'EmptyLatentImage') {
-        width = (inputs['width']! as num).toInt();
-        height = (inputs['height']! as num).toInt();
+      switch (node['class_type']) {
+        case 'CLIPTextEncode' when text.isEmpty:
+          text = inputs['text'] as String? ?? '';
+        case 'EmptyLatentImage' || 'ImageScale' || 'LatentUpscale':
+          width = (inputs['width']! as num).toInt();
+          height = (inputs['height']! as num).toInt();
+        case 'ImagePadForOutpaint':
+          padding = (
+            x: (inputs['left']! as num).toInt() + (inputs['right']! as num).toInt(),
+            y: (inputs['top']! as num).toInt() + (inputs['bottom']! as num).toInt(),
+          );
+        case 'LoadImage':
+          source = comfyInputs[inputs['image']];
+        case 'KSampler':
+          denoise = (inputs['denoise'] as num?)?.toDouble() ?? 1.0;
       }
     }
 
-    return _render(text, {'prompt': jsonEncode(graph)}, width, height);
+    return _render(
+      text,
+      {'prompt': jsonEncode(graph)},
+      width + padding.x,
+      height + padding.y,
+      source: source,
+      denoise: denoise,
+    );
   }
 
   /// A stylised landscape derived from the prompt (sky gradient, sun and layered hills), so different
-  /// cells produce visibly different images.
-  Uint8List _render(String prompt, Map<String, String> textData, int width, int height) {
+  /// cells produce visibly different images. For img2img the [source] image shows through, more so
+  /// the lower [denoise] is.
+  Uint8List _render(
+    String prompt,
+    Map<String, String> textData,
+    int width,
+    int height, {
+    Uint8List? source,
+    double denoise = 1,
+  }) {
     final aspect = width / height;
     final outWidth = max(aspect >= 1 ? imageSize : (imageSize * aspect).round(), 8);
     final outHeight = max(aspect >= 1 ? (imageSize / aspect).round() : imageSize, 8);
@@ -501,6 +629,19 @@ class FakeSdServer {
         ..r = rgb.$1
         ..g = rgb.$2
         ..b = rgb.$3;
+    }
+
+    final decoded = source == null ? null : img.decodeImage(source);
+    if (decoded != null) {
+      final fitted = img.copyResize(decoded, width: outWidth, height: outHeight);
+      final keep = (1 - denoise).clamp(0.0, 1.0) * 0.85 + 0.1;
+      for (final pixel in image) {
+        final original = fitted.getPixel(pixel.x, pixel.y);
+        pixel
+          ..r = _mix(pixel.r.toInt(), original.r.toInt(), keep)
+          ..g = _mix(pixel.g.toInt(), original.g.toInt(), keep)
+          ..b = _mix(pixel.b.toInt(), original.b.toInt(), keep);
+      }
     }
 
     image.textData = textData;

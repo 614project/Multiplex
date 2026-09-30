@@ -21,6 +21,8 @@ class CellModel extends ChangeNotifier {
     String overrideNegativePrompt = '',
     String? lastImagePath,
     String? representativeImagePath,
+    String? sourceImagePath,
+    double? overrideDenoisingStrength,
   }) : _order = order,
        _name = name,
        _prompt = prompt,
@@ -30,7 +32,9 @@ class CellModel extends ChangeNotifier {
        _overrideHeight = overrideHeight,
        _overrideNegativePrompt = overrideNegativePrompt,
        _lastImagePath = lastImagePath,
-       _representativeImagePath = representativeImagePath {
+       _representativeImagePath = representativeImagePath,
+       _sourceImagePath = sourceImagePath,
+       _overrideDenoisingStrength = overrideDenoisingStrength {
     _refreshDisplayImage();
   }
 
@@ -48,6 +52,8 @@ class CellModel extends ChangeNotifier {
     overrideNegativePrompt: data.overrideNegativePrompt,
     lastImagePath: PathSafety.tryResolveWithinRoot(projectFolder, data.lastImagePath),
     representativeImagePath: PathSafety.tryResolveWithinRoot(projectFolder, data.representativeImagePath),
+    sourceImagePath: PathSafety.tryResolveWithinRoot(projectFolder, data.sourceImagePath),
+    overrideDenoisingStrength: data.overrideDenoisingStrength,
   );
 
   final String id;
@@ -64,6 +70,8 @@ class CellModel extends ChangeNotifier {
   String _overrideNegativePrompt;
   String? _lastImagePath;
   String? _representativeImagePath;
+  String? _sourceImagePath;
+  double? _overrideDenoisingStrength;
   String? _displayImagePath;
   bool _isSelected = false;
   bool _isBusy = false;
@@ -93,8 +101,10 @@ class CellModel extends ChangeNotifier {
   int? get overrideWidth => _overrideWidth;
   int? get overrideHeight => _overrideHeight;
   String get overrideNegativePrompt => _overrideNegativePrompt;
+  double? get overrideDenoisingStrength => _overrideDenoisingStrength;
 
   bool get hasOverrides =>
+      _overrideDenoisingStrength != null ||
       _overrideSteps != null ||
       _overrideCfgScale != null ||
       _overrideWidth != null ||
@@ -107,6 +117,7 @@ class CellModel extends ChangeNotifier {
     if (_overrideCfgScale != null) 'CFG ${_formatNumber(_overrideCfgScale!)}',
     if (_overrideWidth != null || _overrideHeight != null) '${_overrideWidth ?? '·'}×${_overrideHeight ?? '·'}',
     if (_overrideNegativePrompt.trim().isNotEmpty) '+ negative',
+    if (_overrideDenoisingStrength != null) 'denoise ${_formatNumber(_overrideDenoisingStrength!)}',
   ];
 
   void setOverrides({
@@ -130,6 +141,16 @@ class CellModel extends ChangeNotifier {
       _overrideNegativePrompt = negativePrompt.trim();
     }, changed);
   }
+
+  /// img2img denoising strength for this cell only; null uses the project value.
+  void setDenoisingOverride(double? value) {
+    final normalized = value == null || value.isNaN ? null : value.clamp(0.0, 1.0).toDouble();
+    _edit(() => _overrideDenoisingStrength = normalized, normalized != _overrideDenoisingStrength);
+  }
+
+  /// The cell's own img2img source image (absolute path); null uses the project's source image.
+  String? get sourceImagePath => _sourceImagePath;
+  set sourceImagePath(String? value) => _edit(() => _sourceImagePath = value, _sourceImagePath != value);
 
   String? get lastImagePath => _lastImagePath;
   set lastImagePath(String? value) => _edit(() {
@@ -224,6 +245,8 @@ class CellModel extends ChangeNotifier {
     overrideNegativePrompt: _overrideNegativePrompt,
     lastImagePath: _relative(projectFolder, _lastImagePath),
     representativeImagePath: _relative(projectFolder, _representativeImagePath),
+    sourceImagePath: _relative(projectFolder, _sourceImagePath),
+    overrideDenoisingStrength: _overrideDenoisingStrength,
   );
 
   CellSnapshot snapshot() => CellSnapshot(
@@ -235,6 +258,8 @@ class CellModel extends ChangeNotifier {
     overrideWidth: _overrideWidth,
     overrideHeight: _overrideHeight,
     overrideNegativePrompt: _overrideNegativePrompt,
+    sourceImagePath: _sourceImagePath,
+    overrideDenoisingStrength: _overrideDenoisingStrength,
   );
 
   static String? _relative(String projectFolder, String? fullPath) =>

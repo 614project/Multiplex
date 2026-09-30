@@ -1,6 +1,6 @@
 import '../models/api_platform.dart';
+import '../models/img2img.dart';
 import '../models/lora_selection.dart';
-import '../models/project_data.dart';
 
 /// Immutable copy of a cell taken when a job is queued, so later prompt edits only affect new jobs.
 class CellSnapshot {
@@ -13,18 +13,9 @@ class CellSnapshot {
     this.overrideWidth,
     this.overrideHeight,
     this.overrideNegativePrompt = '',
+    this.sourceImagePath,
+    this.overrideDenoisingStrength,
   });
-
-  factory CellSnapshot.fromData(CellData cell, String displayName) => CellSnapshot(
-    id: cell.id,
-    displayName: displayName,
-    prompt: cell.prompt,
-    overrideSteps: cell.overrideSteps,
-    overrideCfgScale: cell.overrideCfgScale,
-    overrideWidth: cell.overrideWidth,
-    overrideHeight: cell.overrideHeight,
-    overrideNegativePrompt: cell.overrideNegativePrompt,
-  );
 
   final String id;
   final String displayName;
@@ -34,6 +25,10 @@ class CellSnapshot {
   final int? overrideWidth;
   final int? overrideHeight;
   final String overrideNegativePrompt;
+
+  /// Absolute path of the cell's own img2img source image; null uses the project's.
+  final String? sourceImagePath;
+  final double? overrideDenoisingStrength;
 }
 
 /// Everything a queued job needs, resolved against the app defaults at the moment it was queued.
@@ -67,6 +62,11 @@ class GenerationContext {
     required this.hiresDenoisingStrength,
     required this.hiresResizeWidth,
     required this.hiresResizeHeight,
+    this.generationType = GenerationType.txt2img,
+    this.sourceImagePath,
+    this.denoisingStrength = Img2ImgDefaults.denoisingStrength,
+    this.resizeMode = Img2ImgResizeModes.justResize,
+    this.useSourceImageSize = true,
     required this.pollingRecoveryGraceSeconds,
     required this.repeatCount,
     required this.targets,
@@ -100,6 +100,13 @@ class GenerationContext {
   final double hiresDenoisingStrength;
   final int hiresResizeWidth;
   final int hiresResizeHeight;
+  final GenerationType generationType;
+
+  /// Absolute path of the project's img2img source image, used by cells without their own.
+  final String? sourceImagePath;
+  final double denoisingStrength;
+  final String resizeMode;
+  final bool useSourceImageSize;
   final int pollingRecoveryGraceSeconds;
   final int repeatCount;
 
@@ -108,6 +115,10 @@ class GenerationContext {
 
   bool get isAgentSchedulerMode => platform.isWebUi && generationMode == GenerationModes.agentScheduler;
   bool get isPollingMode => platform.isWebUi && generationMode == GenerationModes.pollingProxySafe;
+  bool get isImg2Img => generationType.isImg2Img;
+
+  /// The source image [cell] is generated from in img2img mode, or null when it has none.
+  String? sourceImageFor(CellSnapshot cell) => cell.sourceImagePath ?? sourceImagePath;
 
   static List<CellSnapshot> roundRobin(List<CellSnapshot> cells, int repeatCount) => [
     for (var round = 0; round < (repeatCount < 1 ? 1 : repeatCount); round++) ...cells,
@@ -155,8 +166,8 @@ class GenerationJob {
       context: context,
       title: cellCount == 1 ? firstName : '$cellCount cells',
       description:
-          '${context.platform.label} · $rounds round${rounds == 1 ? '' : 's'} · '
-          '$images image${images == 1 ? '' : 's'}',
+          '${context.platform.label}${context.isImg2Img ? ' · img2img' : ''} · '
+          '$rounds round${rounds == 1 ? '' : 's'} · $images image${images == 1 ? '' : 's'}',
     );
   }
 }

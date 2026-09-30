@@ -1,21 +1,31 @@
 import '../core/ids.dart';
 import '../models/api_platform.dart';
+import '../models/img2img.dart';
 import '../models/lora_selection.dart';
 import 'sd_models.dart';
 
-/// Builds the txt2img prompt graph that is queued through ComfyUI `/prompt`, so no separate
-/// workflow file is needed.
+/// Builds the txt2img or img2img prompt graph that is queued through ComfyUI `/prompt`, so no
+/// separate workflow file is needed.
 abstract final class ComfyWorkflow {
   static const filenamePrefix = 'Multiplex';
 
-  static Map<String, Object?> buildTxt2ImgPrompt(
-    Txt2ImgRequest request, {
+  /// img2img requests need [sourceImageName], the name the uploaded source image has in ComfyUI's
+  /// input folder. [imageScaleMethod] fits the source image to the requested size.
+  static Map<String, Object?> buildPrompt(
+    GenerationRequest request, {
     required String checkpoint,
     required String latentUpscaleMethod,
     required String loraLoaderType,
     required bool supportsClipSetLastLayer,
+    String? sourceImageName,
+    String imageScaleMethod = 'bicubic',
     int Function() seedGenerator = randomSeed,
   }) {
+    final source = request.source;
+    if (source != null && (sourceImageName == null || sourceImageName.trim().isEmpty)) {
+      throw ArgumentError.value(sourceImageName, 'sourceImageName', 'img2img workflows need the uploaded image name');
+    }
+
     final seed = request.seed < 0 ? seedGenerator() : request.seed;
     final steps = request.steps < 1 ? 1 : request.steps;
     final cfg = request.cfgScale < 1 ? 1.0 : request.cfgScale;
@@ -70,7 +80,24 @@ abstract final class ComfyWorkflow {
     final positiveId = nextId();
     final negativeId = nextId();
 
-    prompt[latentId] = _node('EmptyLatentImage', {'width': width, 'height': height, 'batch_size': 1});
+    if (source == null) {
+      prompt[latentId] = _node('EmptyLatentImage', {'width': width, 'height': height, 'batch_size': 1});
+    } else {
+      _addSourceLatent(
+        prompt,
+        nextId,
+        latentId: latentId,
+        vae: _link(checkpointId, 2),
+        source: source,
+        sourceImageName: sourceImageName!,
+        resizeMode: Img2ImgResizeModes.normalize(request.resizeMode),
+        width: width,
+        height: height,
+        imageScaleMethod: imageScaleMethod,
+        latentUpscaleMethod: latentUpscaleMethod,
+      );
+    }
+
     prompt[positiveId] = _node('CLIPTextEncode', {'clip': clipLink, 'text': request.prompt});
     prompt[negativeId] = _node('CLIPTextEncode', {'clip': clipLink, 'text': request.negativePrompt ?? ''});
     prompt[samplerId] = _node('KSampler', {
@@ -79,7 +106,7 @@ abstract final class ComfyWorkflow {
       'cfg': cfg,
       'sampler_name': sampler,
       'scheduler': scheduler,
-      'denoise': 1.0,
+      'denoise': source == null ? 1.0 : request.denoisingStrength.clamp(0.0, 1.0).toDouble(),
       'model': modelLink,
       'positive': _link(positiveId, 0),
       'negative': _link(negativeId, 0),
@@ -87,7 +114,7 @@ abstract final class ComfyWorkflow {
     });
 
     var finalSamplerId = samplerId;
-    if (request.enableHiresFix == true) {
+    if (source == null && request.enableHiresFix == true) {
       final upscaleId = nextId();
       final hiresSamplerId = nextId();
       final hiresSteps = request.hiresSteps ?? 0;
@@ -119,7 +146,106 @@ abstract final class ComfyWorkflow {
     return prompt;
   }
 
-  static double resolveHiresScale(Txt2ImgRequest request) {
+  /// Loads the uploaded source image, fits it to [width] × [height] as [resizeMode] describes and
+  /// encodes it into the latent the sampler starts from (stored at [latentId]).
+  static void _addSourceLatent(
+    Map<String, Object?> prompt,
+    String Function() nextId, {
+    required String latentId,
+    required List<Object> vae,
+    required Img2ImgSource source,
+    required String sourceImageName,
+    required String resizeMode,
+    required int width,
+    required int height,
+    required String imageScaleMethod,
+    required String latentUpscaleMethod,
+  }) {
+    final loadId = nextId();
+    prompt[loadId] = _node('LoadImage', {'image': sourceImageName});
+    var pixels = _link(loadId, 0);
+
+    if (resizeMode == Img2ImgResizeModes.latentUpscale) {
+      final encodeId = nextId();
+      prompt[encodeId] = _node('VAEEncode', {'pixels': pixels, 'vae': vae});
+      prompt[latentId] = _node('LatentUpscale', {
+        'samples': _link(encodeId, 0),
+        'upscale_method': latentUpscaleMethod,
+        'width': width,
+        'height': height,
+        'crop': 'disabled',
+      });
+      return;
+    }
+
+    if (resizeMode == Img2ImgResizeModes.resizeAndFill) {
+      final fit = fitInside(source.width, source.height, width, height);
+      final scaleId = nextId();
+      prompt[scaleId] = _node('ImageScale', {
+        'image': pixels,
+        'upscale_method': imageScaleMethod,
+        'width': fit.width,
+        'height': fit.height,
+        'crop': 'disabled',
+      });
+      pixels = _link(scaleId, 0);
+      if (fit.width < width || fit.height < height) {
+        final left = (width - fit.width) ~/ 2;
+        final top = (height - fit.height) ~/ 2;
+        final padId = nextId();
+        prompt[padId] = _node('ImagePadForOutpaint', {
+          'image': pixels,
+          'left': left,
+          'top': top,
+          'right': width - fit.width - left,
+          'bottom': height - fit.height - top,
+          'feathering': 0,
+        });
+        pixels = _link(padId, 0);
+      }
+    } else {
+      final scaleId = nextId();
+      prompt[scaleId] = _node('ImageScale', {
+        'image': pixels,
+        'upscale_method': imageScaleMethod,
+        'width': width,
+        'height': height,
+        'crop': resizeMode == Img2ImgResizeModes.cropAndResize ? 'center' : 'disabled',
+      });
+      pixels = _link(scaleId, 0);
+    }
+
+    prompt[latentId] = _node('VAEEncode', {'pixels': pixels, 'vae': vae});
+  }
+
+  /// The largest size with the aspect ratio of [sourceWidth] × [sourceHeight] that fits inside
+  /// [width] × [height].
+  static ({int width, int height}) fitInside(int sourceWidth, int sourceHeight, int width, int height) {
+    if (sourceWidth <= 0 || sourceHeight <= 0) {
+      return (width: width, height: height);
+    }
+
+    final scale = width / sourceWidth < height / sourceHeight ? width / sourceWidth : height / sourceHeight;
+    return (
+      width: (sourceWidth * scale).round().clamp(1, width),
+      height: (sourceHeight * scale).round().clamp(1, height),
+    );
+  }
+
+  /// Picks the `ImageScale` method used to fit source images, preferring the sharpest one available.
+  static String resolveImageScaleMethod(List<String> availableMethods) {
+    for (final candidate in ['lanczos', 'bicubic', 'bilinear', 'area', 'nearest-exact']) {
+      for (final method in availableMethods) {
+        if (method.toLowerCase() == candidate) {
+          return method;
+        }
+      }
+    }
+
+    return availableMethods.firstWhere((method) => method.trim().isNotEmpty, orElse: () => 'bicubic');
+  }
+
+  static double resolveHiresScale(GenerationRequest request) {
     var scale = request.hiresScale != null && request.hiresScale! > 1 ? request.hiresScale! : 2.0;
     if (request.width > 0 && request.height > 0) {
       final resizeX = request.hiresResizeX != null && request.hiresResizeX! > 0

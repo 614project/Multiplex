@@ -148,7 +148,7 @@ void main() {
 
   test('polling mode recovers the final preview when the proxy drops the response', () async {
     await setUpApp(
-      fake: FakeSdServer(dropFinalTxt2ImgResponse: true, generationTime: const Duration(milliseconds: 300)),
+      fake: FakeSdServer(dropFinalGenerationResponse: true, generationTime: const Duration(milliseconds: 300)),
     );
     final project = session()..edit((settings) => settings.generationMode = 'Polling (Proxy Safe)');
     project.regenerate(project.cells.first);
@@ -161,7 +161,7 @@ void main() {
   });
 
   test('standard mode reports a dropped response as a failure', () async {
-    await setUpApp(fake: FakeSdServer(dropFinalTxt2ImgResponse: true), preferences: {'livePreviewEnabled': false});
+    await setUpApp(fake: FakeSdServer(dropFinalGenerationResponse: true), preferences: {'livePreviewEnabled': false});
     final project = session();
     project.regenerate(project.cells.first);
     await waitForIdle();

@@ -3,6 +3,7 @@ import 'package:multiplex/src/core/image_signature.dart';
 import 'package:multiplex/src/core/path_safety.dart';
 import 'package:multiplex/src/core/prompt_composer.dart';
 import 'package:multiplex/src/core/url_tools.dart';
+import 'package:multiplex/src/models/img2img.dart';
 import 'package:multiplex/src/models/lora_selection.dart';
 import 'package:path/path.dart' as p;
 
@@ -179,6 +180,28 @@ void main() {
     test('decodes base64 with a data URI prefix', () {
       expect(ImageSignature.tryDecodeBase64('data:image/png;base64,AQID'), [1, 2, 3]);
       expect(ImageSignature.tryDecodeBase64('not base64!'), isNull);
+    });
+
+    test('strict detection rejects unknown data', () {
+      expect(ImageSignature.tryDetectExtension(const [1, 2, 3, 4]), isNull);
+      expect(ImageSignature.tryDetectExtension(const [0xFF, 0xD8, 0xFF, 0xE0]), '.jpg');
+    });
+  });
+
+  group('img2img', () {
+    test('rounds source sizes to multiples of 8 of at least 64', () {
+      expect(roundGenerationDimension(320), 320);
+      expect(roundGenerationDimension(1023), 1024);
+      expect(roundGenerationDimension(1019), 1016);
+      expect(roundGenerationDimension(10), 64);
+    });
+
+    test('resize modes follow the WebUI order', () {
+      expect(Img2ImgResizeModes.webUiIndex(Img2ImgResizeModes.justResize), 0);
+      expect(Img2ImgResizeModes.webUiIndex('Just resize (latent upscale)'), 3);
+      expect(Img2ImgResizeModes.normalize('unknown'), Img2ImgResizeModes.justResize);
+      expect(GenerationType.parse('IMG2IMG'), GenerationType.img2img);
+      expect(GenerationType.parse(null), GenerationType.txt2img);
     });
   });
 }

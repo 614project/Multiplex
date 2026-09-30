@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -7,6 +8,7 @@ import 'package:multiplex/src/api/sd_client.dart';
 import 'package:multiplex/src/api/sd_models.dart';
 import 'package:multiplex/src/core/cancellation.dart';
 import 'package:multiplex/src/models/api_platform.dart';
+import 'package:multiplex/src/models/img2img.dart';
 import 'package:multiplex/src/models/lora_selection.dart';
 
 import '../support/recording_client.dart';
@@ -23,8 +25,20 @@ const metadata = ComfyObjectInfoMetadata(
   supportsClipSetLastLayer: true,
 );
 
-Txt2ImgRequest createRequest() =>
-    Txt2ImgRequest(prompt: 'a cat', steps: 20, cfgScale: 7, width: 512, height: 512, seed: 42);
+GenerationRequest createRequest() =>
+    GenerationRequest(prompt: 'a cat', steps: 20, cfgScale: 7, width: 512, height: 512, seed: 42);
+
+final sourceImage = Img2ImgSource(
+  bytes: Uint8List.fromList([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3]),
+  width: 800,
+  height: 400,
+  fileName: 'source-abc.png',
+);
+
+GenerationRequest createImg2ImgRequest(String resizeMode) => createRequest()
+  ..source = sourceImage
+  ..denoisingStrength = 0.35
+  ..resizeMode = resizeMode;
 
 void main() {
   final none = CancellationToken.none;
@@ -194,11 +208,44 @@ void main() {
         (_) => RecordingClient.json('{ "prompt_id": "server-id", "number": 1, "node_errors": {} }'),
       );
       final promptId = await SdClient(httpClient: recorder.client)
-          .queueComfyTxt2Img(comfyUrl, createRequest(), metadata, none, clientId: 'client');
+          .queueComfy(comfyUrl, createRequest(), metadata, none, clientId: 'client');
 
       expect(promptId, 'server-id');
       expect(recorder.requests.single.summary, 'POST /prompt');
       expect(recorder.requests.single.body, contains('"ckpt_name":"model.safetensors"'));
+    });
+
+    test('uploads img2img source images as multipart form data', () async {
+      final recorder = RecordingClient(
+        (_) => RecordingClient.json('{ "name": "multiplex-source-abc.png", "subfolder": "", "type": "input" }'),
+      );
+      final name = await SdClient(httpClient: recorder.client)
+          .uploadComfyImage(comfyUrl, sourceImage.bytes, 'multiplex-source-abc.png', none);
+
+      expect(name, 'multiplex-source-abc.png');
+      final request = recorder.requests.single;
+      expect(request.summary, 'POST /upload/image');
+      expect(request.contentType, startsWith('multipart/form-data; boundary='));
+      expect(request.body, contains('filename="multiplex-source-abc.png"'));
+      expect(request.body, contains('name="overwrite"'));
+    });
+
+    test('img2img requests go to the img2img routes', () async {
+      final recorder = RecordingClient(
+        (request) => request.uri.path.startsWith('/agent-scheduler')
+            ? RecordingClient.json('{ "task_id": "t1" }')
+            : RecordingClient.json('{ "images": [] }'),
+      );
+      final client = SdClient(httpClient: recorder.client);
+      await client.generate(webUiUrl, createImg2ImgRequest(Img2ImgResizeModes.justResize), none);
+      await client.queueAgentScheduler(webUiUrl, createImg2ImgRequest(Img2ImgResizeModes.justResize), none);
+      await client.generate(webUiUrl, createRequest(), none);
+
+      expect(recorder.requests.map((request) => request.summary), [
+        'POST /sdapi/v1/img2img',
+        'POST /agent-scheduler/v1/queue/img2img',
+        'POST /sdapi/v1/txt2img',
+      ]);
     });
 
     test('a rejected workflow reports the failing node', () async {
@@ -209,8 +256,7 @@ void main() {
         ),
       );
       await expectLater(
-        SdClient(httpClient: recorder.client)
-            .queueComfyTxt2Img(comfyUrl, createRequest(), metadata, none, clientId: 'c'),
+        SdClient(httpClient: recorder.client).queueComfy(comfyUrl, createRequest(), metadata, none, clientId: 'c'),
         throwsA(
           isA<ApiException>().having(
             (error) => error.message,
@@ -331,9 +377,9 @@ void main() {
     });
   });
 
-  group('Txt2ImgRequest', () {
+  group('GenerationRequest', () {
     test('omits null fields and nests override settings', () {
-      final json = Txt2ImgRequest(
+      final json = GenerationRequest(
         prompt: 'p',
         sdModelCheckpoint: 'model.safetensors',
         clipStopAtLastLayers: 2,
@@ -343,6 +389,19 @@ void main() {
       expect(json['override_settings'], {'sd_model_checkpoint': 'model.safetensors', 'CLIP_stop_at_last_layers': 2});
       expect(json['override_settings_restore_afterwards'], isTrue);
       expect(json['seed'], -1);
+    });
+
+    test('img2img carries the source image, denoising strength and resize mode', () {
+      final json = (createImg2ImgRequest(Img2ImgResizeModes.resizeAndFill)..enableHiresFix = null).toJson();
+      expect(json['init_images'], [base64.encode(sourceImage.bytes)]);
+      expect(json['denoising_strength'], 0.35);
+      expect(json['resize_mode'], 2);
+      expect(json.containsKey('enable_hr'), isFalse);
+
+      final txt2img = createRequest().toJson();
+      expect(txt2img.containsKey('init_images'), isFalse);
+      expect(txt2img.containsKey('denoising_strength'), isFalse);
+      expect(txt2img.containsKey('resize_mode'), isFalse);
     });
   });
 
@@ -357,7 +416,7 @@ void main() {
         ..hiresDenoisingStrength = 0.4
         ..samplerName = 'Euler a'
         ..scheduler = 'Karras';
-      final graph = ComfyWorkflow.buildTxt2ImgPrompt(
+      final graph = ComfyWorkflow.buildPrompt(
         request,
         checkpoint: 'model.safetensors',
         latentUpscaleMethod: 'bislerp',
@@ -381,6 +440,69 @@ void main() {
       expect(inputs(hiresSampler)['denoise'], 0.4);
       final save = graph.entries.firstWhere((entry) => (entry.value! as Map)['class_type'] == 'SaveImage').key;
       expect((inputs(save)['images']! as List).first, isNot('3'));
+    });
+
+    Map<String, Object?> img2imgGraph(String resizeMode) => ComfyWorkflow.buildPrompt(
+      createImg2ImgRequest(resizeMode),
+      sourceImageName: 'multiplex-source-abc.png',
+      imageScaleMethod: 'lanczos',
+      checkpoint: 'model.safetensors',
+      latentUpscaleMethod: 'bislerp',
+      loraLoaderType: 'LoraLoader',
+      supportsClipSetLastLayer: true,
+    );
+
+    Map<String, Object?> nodeOf(Map<String, Object?> graph, String type) =>
+        graph.values.cast<Map<String, Object?>>().firstWhere((node) => node['class_type'] == type)['inputs']!
+            as Map<String, Object?>;
+
+    List<Object?> typesOf(Map<String, Object?> graph) =>
+        graph.values.cast<Map<String, Object?>>().map((node) => node['class_type']).toList();
+
+    test('img2img encodes the uploaded source instead of an empty latent', () {
+      final graph = img2imgGraph(Img2ImgResizeModes.cropAndResize);
+      expect(typesOf(graph), isNot(contains('EmptyLatentImage')));
+      expect(nodeOf(graph, 'LoadImage')['image'], 'multiplex-source-abc.png');
+      expect(nodeOf(graph, 'ImageScale'), containsPair('crop', 'center'));
+      expect(nodeOf(graph, 'ImageScale'), containsPair('upscale_method', 'lanczos'));
+      expect(nodeOf(graph, 'ImageScale')['width'], 512);
+      final sampler = nodeOf(graph, 'KSampler');
+      expect(sampler['denoise'], 0.35);
+      final latent = graph[(sampler['latent_image']! as List).first]! as Map<String, Object?>;
+      expect(latent['class_type'], 'VAEEncode');
+    });
+
+    test('img2img resize modes map onto ComfyUI nodes', () {
+      expect(nodeOf(img2imgGraph(Img2ImgResizeModes.justResize), 'ImageScale')['crop'], 'disabled');
+
+      final latent = img2imgGraph(Img2ImgResizeModes.latentUpscale);
+      expect(typesOf(latent), isNot(contains('ImageScale')));
+      expect(nodeOf(latent, 'LatentUpscale'), containsPair('width', 512));
+
+      // An 800 × 400 source fits a 512 × 512 target as 512 × 256 with 128 px bands above and below.
+      final fill = img2imgGraph(Img2ImgResizeModes.resizeAndFill);
+      expect(nodeOf(fill, 'ImageScale'), containsPair('height', 256));
+      final pad = nodeOf(fill, 'ImagePadForOutpaint');
+      expect([pad['left'], pad['top'], pad['right'], pad['bottom']], [0, 128, 0, 128]);
+    });
+
+    test('img2img graphs need the uploaded image name', () {
+      expect(
+        () => ComfyWorkflow.buildPrompt(
+          createImg2ImgRequest(Img2ImgResizeModes.justResize),
+          checkpoint: 'model.safetensors',
+          latentUpscaleMethod: 'bislerp',
+          loraLoaderType: 'LoraLoader',
+          supportsClipSetLastLayer: false,
+        ),
+        throwsArgumentError,
+      );
+    });
+
+    test('prefers lanczos for fitting source images', () {
+      expect(ComfyWorkflow.resolveImageScaleMethod(const ['bilinear', 'lanczos']), 'lanczos');
+      expect(ComfyWorkflow.resolveImageScaleMethod(const []), 'bicubic');
+      expect(ComfyWorkflow.fitInside(1000, 500, 512, 512), (width: 512, height: 256));
     });
 
     test('resolves latent upscale methods from WebUI labels', () {

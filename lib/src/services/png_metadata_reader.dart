@@ -10,7 +10,7 @@ import '../core/json_read.dart';
 import '../models/image_metadata.dart';
 
 /// Reads generation details from PNG text chunks: the WebUI `parameters` infotext or the ComfyUI
-/// `prompt` graph written by this app's txt2img workflow. Basic size information is always filled.
+/// `prompt` graph written by this app's txt2img and img2img workflows. Basic size information is always filled.
 abstract final class PngMetadataReader {
   static const _pngSignature = [137, 80, 78, 71, 13, 10, 26, 10];
   static final RegExp _webUiParameter = RegExp(
@@ -254,10 +254,16 @@ abstract final class PngMetadataReader {
       metadata.hiresSteps = hiresSteps;
     }
 
+    // txt2img only writes a denoising strength for Hires.fix, together with Hires keys; on its own
+    // it marks an img2img image.
     final denoise = double.tryParse(parameter('Denoising strength') ?? '');
-    if (denoise != null) {
+    final hasHiresKeys = parameters.keys.any((key) => key.startsWith('hires '));
+    if (denoise != null && hasHiresKeys) {
       metadata.enableHiresFix = true;
       metadata.hiresDenoisingStrength = denoise;
+    } else if (denoise != null) {
+      metadata.isImg2Img = true;
+      metadata.denoisingStrength = denoise;
     }
 
     final loraNames = <String>{};
@@ -385,6 +391,10 @@ abstract final class PngMetadataReader {
       }
     } else {
       metadata.steps = finalSteps;
+      if (_startsFromSourceImage(root, latentSource)) {
+        metadata.isImg2Img = true;
+        metadata.denoisingStrength = _readDouble(finalSampler, 'denoise');
+      }
     }
 
     metadata.enableHiresFix = isHiresFix;
@@ -397,8 +407,27 @@ abstract final class PngMetadataReader {
     metadata.metadataSource = 'ComfyUI prompt graph';
     metadata.parseStatusMessage = metadata.metadataParsed
         ? ''
-        : "The ComfyUI prompt graph could not be matched to this app's txt2img workflow.";
+        : "The ComfyUI prompt graph could not be matched to this app's workflow.";
     return metadata.metadataParsed;
+  }
+
+  /// Whether the sampler's latent comes from an encoded image (img2img), possibly upscaled in latent space.
+  static bool _startsFromSourceImage(Map<String, Object?> root, Map<String, Object?>? latentSource) {
+    var node = latentSource;
+    for (var depth = 0; node != null && depth < 4; depth++) {
+      final type = _classType(node);
+      if (type == 'VAEEncode' || type == 'VAEEncodeForInpaint') {
+        return true;
+      }
+
+      if (type != 'LatentUpscale' && type != 'LatentUpscaleBy') {
+        return false;
+      }
+
+      node = _linked(root, node, 'samples');
+    }
+
+    return false;
   }
 
   static void _parseModelChain(

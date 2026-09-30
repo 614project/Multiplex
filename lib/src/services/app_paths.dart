@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:path/path.dart' as p;
 
+import '../models/img2img.dart';
+
 /// Locations of everything the app stores on disk.
 ///
 /// ```
@@ -9,6 +11,7 @@ import 'package:path/path.dart' as p;
 /// <root>/comfy-metadata-cache.json
 /// <root>/projects/<project-id>/project.json
 /// <root>/projects/<project-id>/cells/<cell-id>/<yyyyMMdd_HHmmssfff>.png
+/// <root>/projects/<project-id>/sources/source-<id>.png     (img2img source images)
 /// <root>/prompt-autocomplete/{danbooru,extra-quality-tags,custom-tags}.csv
 /// <root>/logs/multiplex.log
 /// ```
@@ -30,6 +33,7 @@ class AppPaths {
   String projectFolder(String projectId) => p.join(projectsRoot, projectId);
   String projectFile(String projectId) => p.join(projectFolder(projectId), 'project.json');
   String cellFolder(String projectId, String cellId) => p.join(projectFolder(projectId), 'cells', cellId);
+  String sourceFolder(String projectId) => p.join(projectFolder(projectId), Img2ImgDefaults.sourceFolderName);
 
   Future<void> ensureCreated() async {
     await Directory(projectsRoot).create(recursive: true);

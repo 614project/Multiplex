@@ -4,12 +4,13 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 class RecordedRequest {
-  RecordedRequest(this.method, this.uri, this.body, this.authorization);
+  RecordedRequest(this.method, this.uri, this.body, this.authorization, [this.contentType]);
 
   final String method;
   final Uri uri;
   final String body;
   final String? authorization;
+  final String? contentType;
 
   /// `METHOD /path?query`, like the Summary of the original test handler.
   String get summary => '$method ${uri.path}${uri.hasQuery ? '?${uri.query}' : ''}';
@@ -21,7 +22,13 @@ class RecordedRequest {
 class RecordingClient {
   RecordingClient(http.Response Function(RecordedRequest request) respond) {
     client = MockClient((request) async {
-      final recorded = RecordedRequest(request.method, request.url, request.body, request.headers['Authorization']);
+      final recorded = RecordedRequest(
+        request.method,
+        request.url,
+        latin1.decode(request.bodyBytes),
+        request.headers['Authorization'],
+        request.headers['content-type'],
+      );
       requests.add(recorded);
       return respond(recorded);
     });

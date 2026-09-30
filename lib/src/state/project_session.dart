@@ -12,10 +12,12 @@ import '../core/ids.dart';
 import '../core/image_signature.dart';
 import '../core/image_timestamps.dart';
 import '../core/option_lists.dart';
+import '../core/path_safety.dart';
 import '../generation/generation_context.dart';
 import '../generation/generation_runner.dart';
 import '../models/api_platform.dart';
 import '../models/app_preferences.dart';
+import '../models/img2img.dart';
 import '../models/lora_selection.dart';
 import '../models/project_data.dart';
 import '../models/project_settings.dart';
@@ -24,6 +26,7 @@ import '../services/app_paths.dart';
 import '../services/comfy_metadata_cache.dart';
 import '../services/file_io.dart';
 import '../services/project_store.dart';
+import '../services/source_images.dart';
 import 'app_messenger.dart';
 import 'cell_model.dart';
 
@@ -337,6 +340,7 @@ class ProjectSession extends ChangeNotifier implements GenerationHost {
     _active = true;
     _comfyCacheSubscription ??= env.comfyCache.changes.listen(_onComfyCacheChanged);
     scheduleMetadataRefresh(immediate: true);
+    unawaited(pruneSourceImages());
   }
 
   void deactivate() {
@@ -653,6 +657,8 @@ class ProjectSession extends ChangeNotifier implements GenerationHost {
       overrideWidth: source.overrideWidth,
       overrideHeight: source.overrideHeight,
       overrideNegativePrompt: source.overrideNegativePrompt,
+      sourceImagePath: source.sourceImagePath,
+      overrideDenoisingStrength: source.overrideDenoisingStrength,
     );
     final index = _cells.indexOf(source);
     _attach(cell, index: index < 0 ? null : index + 1);
@@ -674,6 +680,7 @@ class ProjectSession extends ChangeNotifier implements GenerationHost {
     }
 
     _cellsChanged();
+    unawaited(pruneSourceImages());
   }
 
   void moveCell(int oldIndex, int newIndex) {
@@ -720,6 +727,104 @@ class ProjectSession extends ChangeNotifier implements GenerationHost {
   void _reindex() {
     for (var index = 0; index < _cells.length; index++) {
       _cells[index].order = index;
+    }
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // img2img source images
+  // ---------------------------------------------------------------------------------------------
+
+  bool get isImg2Img => settings.isImg2Img;
+  String get sourceFolder => env.paths.sourceFolder(id);
+
+  /// Absolute path of the project's source image, or null when none is set.
+  String? get projectSourceImagePath => settings.sourceImagePath.isEmpty
+      ? null
+      : PathSafety.tryResolveWithinRoot(projectFolder, settings.sourceImagePath);
+
+  /// The image [cell] is generated from in img2img mode: its own source image, else the project's.
+  String? sourceImageFor(CellModel cell) => cell.sourceImagePath ?? projectSourceImagePath;
+
+  /// Cells that would fail in img2img mode because neither they nor the project have a source image.
+  List<CellModel> cellsWithoutSource(Iterable<CellModel> cells) =>
+      projectSourceImagePath != null ? const [] : cells.where((cell) => cell.sourceImagePath == null).toList();
+
+  void setGenerationType(GenerationType type) {
+    if (settings.generationType != type) {
+      edit((settings) => settings.generationType = type);
+    }
+  }
+
+  /// Copies the image at [filePath] into the project's source folder and returns the copy's path.
+  /// Files that already are source images of this project are used as they are.
+  Future<String> importSourceImage(String filePath) async {
+    if (p.isWithin(sourceFolder, filePath)) {
+      return filePath;
+    }
+
+    return SourceImages.store(sourceFolder, await File(filePath).readAsBytes());
+  }
+
+  /// Sets (or with null clears) the project's source image. Throws [FormatException] for files that
+  /// are not supported images.
+  Future<void> setProjectSourceImage(String? filePath) async {
+    final stored = filePath == null ? null : await importSourceImage(filePath);
+    edit(
+      (settings) =>
+          settings.sourceImagePath = stored == null ? '' : PathSafety.toPortableRelative(projectFolder, stored),
+    );
+    unawaited(pruneSourceImages());
+  }
+
+  /// Gives [cell] its own source image, or with null makes it use the project's again.
+  Future<void> setCellSourceImage(CellModel cell, String? filePath) async {
+    cell.sourceImagePath = filePath == null ? null : await importSourceImage(filePath);
+    unawaited(pruneSourceImages());
+  }
+
+  /// Source images referenced by the project, keyed by their path relative to the project folder
+  /// (the keys used in exports).
+  Future<Map<String, Uint8List>> readSourceImages() async {
+    final images = <String, Uint8List>{};
+    for (final path in {projectSourceImagePath, for (final cell in _cells) cell.sourceImagePath}.whereType<String>()) {
+      final bytes = await FileIo.tryReadBytes(path);
+      if (bytes != null) {
+        images[PathSafety.toPortableRelative(projectFolder, path)] = bytes;
+      }
+    }
+
+    return images;
+  }
+
+  /// Deletes source images nothing refers to anymore. Skipped while jobs may still read them.
+  /// Calls run one after another, so two cleanups never race for the same files.
+  Future<void> pruneSourceImages() => _pruning = _pruning.then((_) => _pruneSourceImages());
+
+  Future<void> _pruning = Future<void>.value();
+
+  Future<void> _pruneSourceImages() async {
+    if (generation.hasWork || _removed) {
+      return;
+    }
+
+    final used = {
+      projectSourceImagePath,
+      for (final cell in _cells) cell.sourceImagePath,
+    }.whereType<String>().map(p.normalize).toSet();
+    try {
+      await for (final entity in Directory(sourceFolder).list(followLinks: false)) {
+        if (entity is File && !used.contains(p.normalize(entity.path)) && !entity.path.endsWith('.partial')) {
+          try {
+            await entity.delete();
+          } on PathNotFoundException {
+            // Already gone.
+          }
+        }
+      }
+    } on PathNotFoundException {
+      // No source folder (yet), or the project was just removed.
+    } on FileSystemException catch (error, stackTrace) {
+      AppLog.write('Removing unused source images of project $id', error, stackTrace);
     }
   }
 
@@ -866,6 +971,11 @@ class ProjectSession extends ChangeNotifier implements GenerationHost {
       hiresDenoisingStrength: settings.hiresDenoisingStrength.clamp(0.0, 1.0).toDouble(),
       hiresResizeWidth: settings.hiresResizeWidth < 0 ? 0 : settings.hiresResizeWidth,
       hiresResizeHeight: settings.hiresResizeHeight < 0 ? 0 : settings.hiresResizeHeight,
+      generationType: settings.generationType,
+      sourceImagePath: projectSourceImagePath,
+      denoisingStrength: settings.denoisingStrength.clamp(0.0, 1.0).toDouble(),
+      resizeMode: Img2ImgResizeModes.normalize(settings.resizeMode),
+      useSourceImageSize: settings.useSourceImageSize,
       pollingRecoveryGraceSeconds: prefs.pollingRecoveryGraceSeconds,
       repeatCount: repeatCount < 1 ? 1 : repeatCount,
       targets: GenerationContext.roundRobin(targets, repeatCount),
@@ -968,7 +1078,11 @@ class ProjectSession extends ChangeNotifier implements GenerationHost {
       return;
     }
 
-    _queueProcessor = _processQueue().whenComplete(() => _queueProcessor = null);
+    _queueProcessor = _processQueue().whenComplete(() {
+      _queueProcessor = null;
+      // Source images replaced while jobs were running are only deleted once nothing can read them.
+      unawaited(pruneSourceImages());
+    });
   }
 
   Future<void> _processQueue() async {

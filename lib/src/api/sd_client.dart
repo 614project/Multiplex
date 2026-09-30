@@ -64,9 +64,10 @@ class SdClient {
   // WebUI
   // ---------------------------------------------------------------------------------------------
 
-  Future<Txt2ImgResponse> txt2img(String baseUrl, Txt2ImgRequest request, CancellationToken token) async {
-    final json = await _sendJson('POST', baseUrl, '/sdapi/v1/txt2img', token, body: request.toJson());
-    return Txt2ImgResponse.fromJson(json);
+  /// Runs txt2img, or img2img when the request has a source image.
+  Future<GenerationResponse> generate(String baseUrl, GenerationRequest request, CancellationToken token) async {
+    final json = await _sendJson('POST', baseUrl, request.webUiPath, token, body: request.toJson());
+    return GenerationResponse.fromJson(json);
   }
 
   Future<ProgressResponse> getProgress(String baseUrl, CancellationToken token, {bool skipCurrentImage = true}) async {
@@ -182,9 +183,9 @@ class SdClient {
     return result;
   }
 
-  Future<String> queueAgentSchedulerTxt2Img(String baseUrl, Txt2ImgRequest request, CancellationToken token) async {
+  Future<String> queueAgentScheduler(String baseUrl, GenerationRequest request, CancellationToken token) async {
     final json = JsonRead.map(
-      await _sendJson('POST', baseUrl, '/agent-scheduler/v1/queue/txt2img', token, body: request.toJson()),
+      await _sendJson('POST', baseUrl, request.agentSchedulerQueuePath, token, body: request.toJson()),
     );
     final taskId = json?['task_id'];
     return taskId is String ? taskId : '';
@@ -301,20 +302,47 @@ class SdClient {
       loraNames: loraNames,
       availableLoraLoaderTypes: loaderTypes.isEmpty ? const [ComfyLoraLoaderTypes.loraLoader] : loaderTypes,
       supportsClipSetLastLayer: root.containsKey('CLIPSetLastLayer'),
+      imageScaleMethods: _comboValues(root, 'ImageScale', 'upscale_method'),
     );
   }
 
-  Future<String> queueComfyTxt2Img(
+  /// Uploads an img2img source image into ComfyUI's input folder (replacing a file of the same
+  /// name) and returns the name a `LoadImage` node refers to.
+  Future<String> uploadComfyImage(String baseUrl, Uint8List bytes, String fileName, CancellationToken token) async {
+    final response = await _sendMultipart(
+      baseUrl,
+      '/upload/image',
+      token,
+      fields: {'type': 'input', 'overwrite': 'true'},
+      file: (field: 'image', fileName: fileName, bytes: bytes),
+    );
+    _ensureSuccess(response, '/upload/image');
+    final json = JsonRead.map(_decodeJson(response));
+    final name = _nonEmpty(json?['name']);
+    if (name == null) {
+      throw const ApiException('ComfyUI did not return a file name for the uploaded source image.');
+    }
+
+    final subfolder = _nonEmpty(json?['subfolder']);
+    return subfolder == null ? name : '$subfolder/$name';
+  }
+
+  /// Queues the built-in workflow. img2img requests need the [sourceImageName] returned by
+  /// [uploadComfyImage].
+  Future<String> queueComfy(
     String baseUrl,
-    Txt2ImgRequest request,
+    GenerationRequest request,
     ComfyObjectInfoMetadata? metadata,
     CancellationToken token, {
     required String clientId,
+    String? sourceImageName,
   }) async {
     metadata ??= await getComfyMetadata(baseUrl, token);
     final checkpoint = _resolveComfyCheckpoint(request, metadata.checkpointNames);
-    final prompt = ComfyWorkflow.buildTxt2ImgPrompt(
+    final prompt = ComfyWorkflow.buildPrompt(
       request,
+      sourceImageName: sourceImageName,
+      imageScaleMethod: ComfyWorkflow.resolveImageScaleMethod(metadata.imageScaleMethods),
       checkpoint: checkpoint,
       latentUpscaleMethod: ComfyWorkflow.resolveLatentUpscaleMethod(
         request.hiresUpscaler,
@@ -615,7 +643,7 @@ class SdClient {
     return const [];
   }
 
-  static String _resolveComfyCheckpoint(Txt2ImgRequest request, List<String> checkpoints) {
+  static String _resolveComfyCheckpoint(GenerationRequest request, List<String> checkpoints) {
     final configured = request.sdModelCheckpoint;
     if (configured != null && configured.trim().isNotEmpty) {
       return configured;
@@ -752,6 +780,41 @@ class SdClient {
       request.headers['Content-Type'] = 'application/json';
       request.bodyBytes = utf8.encode(jsonEncode(body));
     }
+
+    try {
+      final streamed = await token.guard(_http.send(request));
+      return await token.guard(http.Response.fromStream(streamed));
+    } on http.RequestAbortedException {
+      throw const OperationCanceledException();
+    } on http.ClientException {
+      if (token.isCancelled) {
+        throw const OperationCanceledException();
+      }
+
+      rethrow;
+    }
+  }
+
+  Future<http.Response> _sendMultipart(
+    String baseUrl,
+    String path,
+    CancellationToken token, {
+    required Map<String, String> fields,
+    required ({String field, String fileName, Uint8List bytes}) file,
+  }) async {
+    token.throwIfCancelled();
+    final endpoint = EndpointResolver.resolve(baseUrl, path);
+    final request = http.AbortableMultipartRequest(
+      'POST',
+      endpoint.uri,
+      abortTrigger: identical(token, CancellationToken.none) ? null : token.whenCancelled,
+    );
+    if (endpoint.basicAuthorization != null) {
+      request.headers['Authorization'] = endpoint.basicAuthorization!;
+    }
+
+    request.fields.addAll(fields);
+    request.files.add(http.MultipartFile.fromBytes(file.field, file.bytes, filename: file.fileName));
 
     try {
       final streamed = await token.guard(_http.send(request));

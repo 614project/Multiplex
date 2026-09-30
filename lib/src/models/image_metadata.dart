@@ -25,6 +25,10 @@ class GeneratedImageMetadata {
   int? hiresSteps;
   double? hiresDenoisingStrength;
 
+  /// The image was made with img2img; [denoisingStrength] is how much the source was changed.
+  bool isImg2Img = false;
+  double? denoisingStrength;
+
   String get sizeText {
     if (width <= 0 || height <= 0) {
       return 'Unavailable';
